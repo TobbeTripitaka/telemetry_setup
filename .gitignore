@@ -1,0 +1,6 @@
+# Ignore macOS Finder cruft everywhere
+.DS_Store
+**/.DS_Store
+
+# Ignore a single file in the repo root
+/credentials.txt

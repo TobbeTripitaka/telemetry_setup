@@ -1,0 +1,285 @@
+========================================================================
+TELE1 Data Collection and Upload Log
+========================================================================
+Started: 2025-12-17 22:37:51
+Hostname: tele1
+User: toby
+Script: /home/toby/tele/tele1.sh
+========================================================================
+
+2025-12-17 22:37:51 [INFO] ==================================================
+2025-12-17 22:37:51 [INFO] TELE1 Data Collection System - Starting
+2025-12-17 22:37:51 [INFO] ==================================================
+2025-12-17 22:37:51 [INFO] Script version: 2.0
+2025-12-17 22:37:51 [INFO] Start time: 2025-12-17_22-37-51
+2025-12-17 22:37:51 [INFO] Log file: /home/toby/tele/log/computer/tele1_2025-12-17_22-37-51.log
+2025-12-17 22:37:51 [INFO] 
+2025-12-17 22:37:51 [INFO] STAGE 1: System Preparation
+2025-12-17 22:37:51 [INFO] ----------------------------
+2025-12-17 22:37:51 [INFO] Checking system dependencies...
+2025-12-17 22:37:51 [INFO] All dependencies satisfied
+2025-12-17 22:37:51 [INFO] Collecting system information...
+2025-12-17 22:37:51 [INFO] ================================
+2025-12-17 22:37:51 [INFO] Hostname: tele1
+2025-12-17 22:37:51 [INFO] Username: toby
+2025-12-17 22:37:51 [INFO] Uptime: up 0 minutes
+2025-12-17 22:37:51 [INFO] Kernel: 6.14.0-36-generic
+2025-12-17 22:37:51 [INFO] Last reboot: 2025-12-17 22:37
+2025-12-17 22:37:51 [INFO] CPU: Intel Atom(R) x6413E Processor @ 1.50GHz
+2025-12-17 22:37:51 [INFO] CPU cores: 4
+2025-12-17 22:37:51 [INFO] CPU temperature: 0°C
+2025-12-17 22:37:51 [INFO] Memory: 13986MB available / 15268MB total
+2025-12-17 22:37:51 [INFO] Disk space available: 91G
+2025-12-17 22:37:51 [INFO] Running processes: 262
+2025-12-17 22:37:51 [INFO] Public IP: N/A
+2025-12-17 22:37:51 [INFO] ================================
+2025-12-17 22:37:51 [INFO] 
+2025-12-17 22:37:51 [INFO] Checking hardware connectivity...
+2025-12-17 22:37:51 [INFO] Checking hardware presence...
+2025-12-17 22:37:51 [INFO] Enumerating USB devices...
+2025-12-17 22:37:51 [INFO] USB devices detected: 9
+2025-12-17 22:37:51 [INFO] Checking network interfaces...
+2025-12-17 22:37:51 [INFO] Network interfaces found:
+2025-12-17 22:37:52 [INFO]   - enp2s0: UP
+2025-12-17 22:37:52 [INFO]   - enp3s0: DOWN
+2025-12-17 22:37:52 [INFO]   - tailscale0: UNKNOWN
+2025-12-17 22:37:52 [INFO] Checking for Pegasus data logger...
+2025-12-17 22:37:52 [INFO] Pegasus logger check passed (basic check only)
+2025-12-17 22:37:52 [WARN] NOTE: Actual device connectivity will be verified during harvest
+2025-12-17 22:37:52 [INFO] System preparation completed successfully
+2025-12-17 22:37:52 [INFO] 
+2025-12-17 22:37:52 [INFO] STAGE 2: Configuration Loading
+2025-12-17 22:37:52 [INFO] -------------------------------
+2025-12-17 22:37:52 [INFO] Downloading configuration from Dropbox...
+2025-12-17 22:37:52 [INFO] Config download attempt 1 of 3
+
+Error: Couldn't resolve host.
+2025-12-17 22:37:52 [WARN] FAILED: Config download attempt 1
+2025-12-17 22:37:52 [INFO] Waiting 10 seconds before retry...
+2025-12-17 22:38:02 [INFO] Config download attempt 2 of 3
+
+Error: Couldn't resolve host.
+2025-12-17 22:38:02 [WARN] FAILED: Config download attempt 2
+2025-12-17 22:38:02 [INFO] Waiting 10 seconds before retry...
+2025-12-17 22:38:12 [INFO] Config download attempt 3 of 3
+
+Error: Couldn't resolve host.
+2025-12-17 22:38:12 [WARN] FAILED: Config download attempt 3
+2025-12-17 22:38:12 [ERROR] Failed to download config after 3 attempts
+2025-12-17 22:38:12 [WARN] Config download failed, attempting to use local defaults
+2025-12-17 22:38:12 [INFO] Loading default configuration...
+2025-12-17 22:38:12 [INFO] Copying default config from: /home/toby/tele/config/config.defaults
+2025-12-17 22:38:12 [INFO] Parsing configuration file...
+2025-12-17 22:38:12 [INFO] Config: EXECUTE = 'auto'
+2025-12-17 22:38:13 [INFO] Config: WAIT_TIME = 2 hours
+2025-12-17 22:38:13 [INFO] Config: AFTER_WAIT = 'auto'
+2025-12-17 22:38:13 [INFO] Config: HARVEST_MODE = 'since last'
+2025-12-17 22:38:13 [INFO] Config: FROM_DATE = '2025-01-01 00:00:00'
+2025-12-17 22:38:13 [INFO] Config: TO_DATE = '2025-12-31 23:59:59'
+2025-12-17 22:38:13 [INFO] Configuration parsed and validated successfully
+2025-12-17 22:38:13 [INFO] Applying configuration settings...
+2025-12-17 22:38:13 [INFO] Save to state file for reference.
+2025-12-17 22:38:13 [INFO] 
+2025-12-17 22:38:13 [INFO] Current Configuration:
+2025-12-17 22:38:13 [INFO] =====================
+2025-12-17 22:38:13 [INFO] EXECUTE      = 'auto'
+2025-12-17 22:38:13 [INFO] WAIT_TIME    = 2 hours
+2025-12-17 22:38:13 [INFO] AFTER_WAIT   = 'auto'
+2025-12-17 22:38:13 [INFO] HARVEST_MODE = 'since last'
+2025-12-17 22:38:13 [INFO] FROM_DATE    = '2025-01-01 00:00:00'
+2025-12-17 22:38:13 [INFO] TO_DATE      = '2025-12-31 23:59:59'
+2025-12-17 22:38:13 [INFO] =====================
+2025-12-17 22:38:13 [INFO] 
+2025-12-17 22:38:13 [INFO] Configuration loaded successfully
+2025-12-17 22:38:13 [INFO] 
+2025-12-17 22:38:13 [INFO] STAGE 3: Network Initialization
+2025-12-17 22:38:13 [INFO] --------------------------------
+2025-12-17 22:38:13 [INFO] Checking network connectivity...
+2025-12-17 22:38:33 [WARN] Network connectivity test failed
+2025-12-17 22:38:33 [WARN] Network not available - uploads may fail
+2025-12-17 22:38:33 [INFO] Network initialization completed
+2025-12-17 22:38:33 [INFO] 
+2025-12-17 22:38:33 [INFO] STAGE 4: Data Collection
+2025-12-17 22:38:33 [INFO] -------------------------
+2025-12-17 22:38:33 [INFO] Collecting Starlink diagnostics...
+2025-12-17 22:38:45 [INFO] Starlink diagnostics collected successfully
+
+========================================
+STARLINK DIAGNOSTIC DATA
+========================================
+{
+  "id": "ut01a88293-01e07c1c-59ddba41",
+  "hardwareVersion": "mini1_panda_prod1",
+  "softwareVersion": "2025.07.13.mr59602",
+  "utcOffsetS": 0,
+  "hardwareSelfTest": "PASSED",
+  "hardwareSelfTestCodesList": [],
+  "alerts": {
+    "dishIsHeating": false,
+    "dishThermalThrottle": false,
+    "dishThermalShutdown": false,
+    "powerSupplyThermalThrottle": false,
+    "motorsStuck": false,
+    "mastNotNearVertical": false,
+    "slowEthernetSpeeds": false,
+    "softwareInstallPending": false,
+    "movingTooFastForPolicy": false,
+    "obstructed": false
+  },
+  "disablementCode": "UNKNOWN",
+  "stowed": false
+}
+========================================
+
+2025-12-17 22:38:45 [INFO] Starting Pegasus Harvester automation...
+2025-12-17 22:38:45 [INFO] Starting Pegasus harvest cycle...
+2025-12-17 22:38:45 [INFO] ========================================
+2025-12-17 22:38:45 [INFO] Harvest Attempt 1 of 3
+2025-12-17 22:38:45 [INFO] ========================================
+2025-12-17 22:38:45 [INFO] Starting single harvest attempt...
+2025-12-17 22:38:45 [INFO] Creating harvest directory: /home/toby/tele/data/pegasus/20251217_2238
+2025-12-17 22:38:45 [INFO] Launching Pegasus Harvester...
+2025-12-17 22:38:45 [INFO] Cleaning up any existing Pegasus processes...
+2025-12-17 22:38:48 [INFO] PEGASUS_BIN=/opt/PegasusHarvester/pegasus-harvester
+2025-12-17 22:38:48 [INFO] Launch command: /opt/PegasusHarvester/pegasus-harvester --remote-debugging-port=9222 --remote-allow-origins=*
+2025-12-17 22:38:48 [INFO] Pegasus Harvester started (PID: 4407)
+2025-12-17 22:38:48 [INFO] Waiting 12s for Pegasus to initialize...
+2025-12-17 22:39:00 [INFO] Pegasus Harvester initialized (PID verified)
+2025-12-17 22:39:01 [INFO] Running JavaScript harvester...
+2025-12-17 22:39:01 [INFO] Command: node /home/toby/tele/js/pegasus_harvest.js /home/toby/tele/data/pegasus/20251217_2238 auto 2 auto "since last" "2025-01-01 00:00:00" "2025-12-31 23:59:59"
+2025-12-17T22:39:02.821Z - Starting enhanced Pegasus harvest automation
+2025-12-17T22:39:02.830Z - Target output directory: /home/toby/tele/data/pegasus/20251217_2238
+2025-12-17T22:39:02.830Z - Initial harvest mode: since last
+2025-12-17T22:39:02.831Z - Date range: 2025-01-01 00:00:00 to 2025-12-31 23:59:59
+2025-12-17T22:39:02.832Z - Configuration validation passed
+2025-12-17T22:39:02.834Z - Memory usage: 11MB
+2025-12-17T22:39:02.837Z - Disk space check completed
+2025-12-17T22:39:02.842Z - Attempting browser connection (1/3)
+2025-12-17T22:39:03.856Z - Browser connection successful on attempt 1
+2025-12-17T22:39:03.857Z - Connected to Pegasus Harvester browser session
+2025-12-17T22:39:03.857Z - 
+=== ATTEMPT 1: Using harvest mode 'since last' ===
+2025-12-17T22:39:14.957Z - Harvest completed with mode 'since last' in 11100ms. Checking for data...
+2025-12-17T22:39:17.964Z - Found 2 data files in /home/toby/tele/data/pegasus/20251217_2238
+2025-12-17T22:39:17.964Z - SUCCESS: Data found in harvest directory with mode 'since last'
+2025-12-17T22:39:17.965Z - [SINCE LAST:1] SUCCESS (11100ms)
+2025-12-17T22:39:17.965Z - SUCCESS: Enhanced Pegasus harvest completed successfully after 1 attempts
+2025-12-17T22:39:17.966Z - HARVEST SUMMARY: 1 successful, 0 failed, 15145ms total
+2025-12-17 22:39:18 [INFO] JavaScript Harvester completed successfully
+2025-12-17 22:39:18 [INFO] Shutting down Pegasus Harvester (PID: 2025-12-17 22:38:45 [INFO] Launching Pegasus Harvester...
+2025-12-17 22:38:45 [INFO] Cleaning up any existing Pegasus processes...
+2025-12-17 22:38:48 [INFO] PEGASUS_BIN=/opt/PegasusHarvester/pegasus-harvester
+2025-12-17 22:38:48 [INFO] Launch command: /opt/PegasusHarvester/pegasus-harvester --remote-debugging-port=9222 --remote-allow-origins=*
+2025-12-17 22:38:48 [INFO] Pegasus Harvester started (PID: 4407)
+2025-12-17 22:38:48 [INFO] Waiting 12s for Pegasus to initialize...
+2025-12-17 22:39:00 [INFO] Pegasus Harvester initialized (PID verified)
+4407)...
+2025-12-17 22:39:18 [INFO] Pegasus Harvester shutdown complete
+2025-12-17 22:39:18 [INFO] SUCCESS: Harvest automation completed on attempt 1
+2025-12-17 22:39:18 [INFO] Verifying harvest success...
+2025-12-17 22:39:18 [INFO] Harvest verified: 32 files collected
+2025-12-17 22:39:18 [INFO] 
+2025-12-17 22:39:18 [INFO] Analyzing harvested data...
+2025-12-17 22:39:18 [INFO] ----------------------------
+2025-12-17 22:39:18 [INFO] Total files harvested: 32
+2025-12-17 22:39:18 [INFO] Total harvest size: 460K
+2025-12-17 22:39:18 [INFO] File breakdown by extension:
+2025-12-17 22:39:18 [INFO]   .351 files: 29
+2025-12-17 22:39:18 [INFO]   .csv files: 1
+2025-12-17 22:39:18 [INFO]   .log files: 1
+2025-12-17 22:39:18 [INFO]   .xml files: 1
+2025-12-17 22:39:18 [INFO] ----------------------------
+2025-12-17 22:39:18 [INFO] 
+2025-12-17 22:39:18 [INFO] SUCCESS: Data harvested successfully
+2025-12-17 22:39:18 [INFO] Data collection stage completed
+2025-12-17 22:39:18 [INFO] 
+2025-12-17 22:39:18 [INFO] STAGE 5: Data Upload
+2025-12-17 22:39:18 [INFO] --------------------
+2025-12-17 22:39:18 [INFO] Compressing and uploading harvest data...
+2025-12-17 22:39:18 [INFO] Preparing harvest data for upload...
+2025-12-17 22:39:18 [INFO] Compressing harvest data...
+2025-12-17 22:39:18 [INFO] Creating archive: /tmp/pegasus_data_20251217_2238.tar.gz
+2025-12-17 22:39:18 [INFO] Compressing 32 files...
+2025-12-17 22:39:18 [INFO] SUCCESS: Archive created (28K)
+2025-12-17 22:39:18 [INFO] Archive path: /tmp/pegasus_data_20251217_2238.tar.gz
+2025-12-17 22:39:18 [INFO] Dropbox destination: /20251217_2238/pegasus_data_20251217_2238.tar.gz
+2025-12-17 22:39:18 [INFO] Uploading file: pegasus_data_20251217_2238.tar.gz (28K)
+2025-12-17 22:39:18 [INFO]   Local path: /tmp/pegasus_data_20251217_2238.tar.gz
+2025-12-17 22:39:18 [INFO]   Remote path: /20251217_2238/pegasus_data_20251217_2238.tar.gz
+2025-12-17 22:39:18 [INFO] Upload attempt 1 of 3
+
+Error: Couldn't resolve host.
+2025-12-17 22:39:18 [WARN] FAILED: Upload attempt 1 failed (exit code: 1)
+2025-12-17 22:39:18 [INFO] Waiting 30s before retry...
+2025-12-17 22:39:48 [INFO] Upload attempt 2 of 3
+
+Error: Couldn't resolve host.
+2025-12-17 22:39:48 [WARN] FAILED: Upload attempt 2 failed (exit code: 1)
+2025-12-17 22:39:48 [INFO] Waiting 30s before retry...
+2025-12-17 22:40:18 [INFO] Upload attempt 3 of 3
+
+Error: Couldn't resolve host.
+2025-12-17 22:40:19 [WARN] FAILED: Upload attempt 3 failed (exit code: 1)
+2025-12-17 22:40:19 [ERROR] FAILED: File upload failed after 3 attempts
+2025-12-17 22:40:19 [ERROR] Harvest data upload failed
+2025-12-17 22:40:19 [WARN] Archive retained for manual upload: /tmp/pegasus_data_20251217_2238.tar.gz
+2025-12-17 22:40:19 [ERROR] FAILED: Harvest data upload failed
+2025-12-17 22:40:19 [INFO] Uploading log file...
+2025-12-17 22:40:19 [INFO] Preparing log file for upload...
+2025-12-17 22:40:19 [INFO] Dropbox destination: /2025-12-17_22-37-51/tele1_2025-12-17_22-37-51.log
+2025-12-17 22:40:19 [INFO] Uploading file: tele1_2025-12-17_22-37-51.log (16K)
+2025-12-17 22:40:19 [INFO]   Local path: /home/toby/tele/log/computer/tele1_2025-12-17_22-37-51.log
+2025-12-17 22:40:19 [INFO]   Remote path: /2025-12-17_22-37-51/tele1_2025-12-17_22-37-51.log
+2025-12-17 22:40:19 [INFO] Upload attempt 1 of 3
+
+Error: Couldn't resolve host.
+2025-12-17 22:40:19 [WARN] FAILED: Upload attempt 1 failed (exit code: 1)
+2025-12-17 22:40:19 [INFO] Waiting 30s before retry...
+2025-12-17 22:40:49 [INFO] Upload attempt 2 of 3
+
+Error: Couldn't resolve host.
+2025-12-17 22:40:49 [WARN] FAILED: Upload attempt 2 failed (exit code: 1)
+2025-12-17 22:40:49 [INFO] Waiting 30s before retry...
+2025-12-17 22:41:19 [INFO] Upload attempt 3 of 3
+
+Error: Couldn't resolve host.
+2025-12-17 22:41:19 [WARN] FAILED: Upload attempt 3 failed (exit code: 1)
+2025-12-17 22:41:19 [ERROR] FAILED: File upload failed after 3 attempts
+2025-12-17 22:41:19 [ERROR] Log file upload failed
+2025-12-17 22:41:19 [ERROR] FAILED: Log file upload failed
+2025-12-17 22:41:19 [INFO] Upload stage completed
+2025-12-17 22:41:19 [INFO] 
+2025-12-17 22:41:19 [INFO] STAGE 6: Sending Notification
+2025-12-17 22:41:19 [INFO] ------------------------------
+2025-12-17 22:41:19 [INFO] Preparing status notification...
+2025-12-17 22:41:19 [INFO] Checking network connectivity...
+2025-12-17 22:41:39 [WARN] Network connectivity test failed
+2025-12-17 22:41:39 [INFO] Sending email notification...
+2025-12-17 22:41:39 [INFO]   To: tobbetripitaka@gmail.com
+2025-12-17 22:41:39 [INFO]   Subject: TELE1: HARVEST SUCCESS, UPLOAD FAILED - 2025-12-17 22:41
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0curl: (6) Could not resolve host: smtp.gmail.com
+2025-12-17 22:41:39 [ERROR] FAILED: Email sending failed
+2025-12-17 22:41:39 [ERROR] Failed to send status notification
+2025-12-17 22:41:39 [INFO] Creating local notification file: /tmp/tele1_notification_1766011299.txt
+2025-12-17 22:41:40 [INFO] Local notification saved: /tmp/tele1_notification_1766011299.txt
+2025-12-17 22:41:40 [ERROR] Failed to send email notification
+2025-12-17 22:41:40 [INFO] Notification sent
+2025-12-17 22:41:40 [INFO] 
+2025-12-17 22:41:40 [INFO] STAGE 7: Cleanup and Shutdown
+2025-12-17 22:41:40 [INFO] ------------------------------
+2025-12-17 22:41:40 [INFO] Cleaning up temporary files...
+2025-12-17 22:41:40 [INFO] 
+2025-12-17 22:41:40 [INFO] ==================================================
+2025-12-17 22:41:40 [INFO] TELE1 Execution Summary
+2025-12-17 22:41:40 [INFO] ==================================================
+2025-12-17 22:41:40 [INFO] Overall Status: HARVEST_SUCCESS_UPLOAD_FAILED
+2025-12-17 22:41:40 [INFO] Harvest Success: YES
+2025-12-17 22:41:40 [INFO] Data Upload Success: NO
+2025-12-17 22:41:40 [INFO] Log Upload Success: NO
+2025-12-17 22:41:40 [INFO] Execution time: 1766011300 seconds
+2025-12-17 22:41:40 [INFO] ==================================================
+2025-12-17 22:41:40 [INFO] 
+2025-12-17 22:41:40 [INFO] Process completed
+2025-12-17 22:41:52 [INFO] User chose to remain in terminal

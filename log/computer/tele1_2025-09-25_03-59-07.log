@@ -1,0 +1,145 @@
+====================================
+TELE1 Data Collection and Upload Log
+Started: Thu Sep 25 03:59:07 AM UTC 2025
+====================================
+2025-09-25 03:59:07 - 
+2025-09-25 03:59:07 - Starting data collection and upload process
+2025-09-25 03:59:07 - Log file: /home/toby/tele/log/computer/tele1_2025-09-25_03-59-07.log
+2025-09-25 03:59:07 - Data directory: /home/toby/tele/data/pegasus
+2025-09-25 03:59:07 - 
+2025-09-25 03:59:07 - Downloading config.txt from Dropbox root
+2025-09-25 03:59:07 - ======================================
+2025-09-25 03:59:07 - Config download attempt 1 of 3
+> Skipping file "/config.txt", file exists with the same hash
+2025-09-25 03:59:08 - SUCCESS: config.txt downloaded and saved to current directory
+2025-09-25 03:59:08 - Config file size: 552 bytes
+2025-09-25 03:59:08 - 
+2025-09-25 03:59:08 - Reading configuration file
+2025-09-25 03:59:08 - =========================
+2025-09-25 03:59:08 - Found config file: ./config.txt
+2025-09-25 03:59:08 - Parsing configuration...
+2025-09-25 03:59:09 - Config: EXECUTE = 'auto'
+2025-09-25 03:59:09 - Config: WAIT_TIME = 2 hours
+2025-09-25 03:59:09 - Config: AFTER_WAIT = 'auto'
+2025-09-25 03:59:09 - Config: HARVEST_MODE = 'since last'
+2025-09-25 03:59:09 - Config: FROM_DATE = '2025-08-01 10:00:00'
+2025-09-25 03:59:09 - Config: TO_DATE = '2025-09-23 23:59:59'
+2025-09-25 03:59:09 - WARNING: Duplicate key 'HARVEST_MODE' found, using last occurrence
+2025-09-25 03:59:09 - Config: HARVEST_MODE = 'all'
+2025-09-25 03:59:09 - 
+2025-09-25 03:59:09 - Final Configuration:
+2025-09-25 03:59:09 - -------------------
+2025-09-25 03:59:09 - EXECUTE = 'auto'
+2025-09-25 03:59:09 - WAIT_TIME = 2 hours
+2025-09-25 03:59:09 - AFTER_WAIT = 'auto'
+2025-09-25 03:59:09 - HARVEST_MODE = 'all'
+2025-09-25 03:59:09 - FROM_DATE = '2025-08-01 10:00:00'
+2025-09-25 03:59:09 - TO_DATE = '2025-09-23 23:59:59'
+2025-09-25 03:59:09 - 
+2025-09-25 03:59:09 - System Information:
+2025-09-25 03:59:09 - --------------------
+2025-09-25 03:59:09 - Hostname: tele1
+2025-09-25 03:59:09 - Uptime: up 4 hours, 31 minutes
+2025-09-25 03:59:09 - Kernel: 6.14.0-29-generic
+2025-09-25 03:59:09 - Last Reboot: 2025-09-24 23:27
+2025-09-25 03:59:09 - CPU Info: Intel Atom(R) x6413E Processor @ 1.50GHz
+2025-09-25 03:59:09 - CPU MHz: 2699.99
+2025-09-25 03:59:09 - Physical Memory: 15268 MB 
+2025-09-25 03:59:09 - Available Memory: 11546 MB 
+2025-09-25 03:59:09 - Disk Space Available: 137G
+2025-09-25 03:59:09 - Process Count: 275
+2025-09-25 03:59:09 - Network Interfaces: lo enp2s0 enp3s0
+2025-09-25 03:59:09 - USB Devices Detected: 5
+2025-09-25 03:59:09 - USB Device List:
+2025-09-25 03:59:09 -  Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+2025-09-25 03:59:09 -  Bus 001 Device 002: ID 046d:c077 Logitech, Inc. Mouse
+2025-09-25 03:59:09 -  Bus 001 Device 003: ID 413c:2107 Dell Computer Corp. KB212-B Quiet Key Keyboard
+2025-09-25 03:59:09 -  Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+2025-09-25 03:59:09 -  Bus 002 Device 002: ID 067b:2732 Prolific Technology, Inc. USB Storage Device
+2025-09-25 03:59:09 - 
+2025-09-25 03:59:09 - Found 201 existing files (42M) from previous runs
+2025-09-25 03:59:09 - Collecting Starlink JSON diagnostics
+STARLINK DIAGNOSTIC JSON
+========================
+{
+  "id": "ut4018060f-02617119-18cd81df",
+  "hardwareVersion": "mini1_prod2",
+  "softwareVersion": "2025.09.11.mr63477",
+  "utcOffsetS": 36000,
+  "hardwareSelfTest": "PASSED",
+  "hardwareSelfTestCodesList": [],
+  "alerts": {
+    "dishIsHeating": false,
+    "dishThermalThrottle": false,
+    "dishThermalShutdown": false,
+    "powerSupplyThermalThrottle": false,
+    "motorsStuck": false,
+    "mastNotNearVertical": false,
+    "slowEthernetSpeeds": false,
+    "softwareInstallPending": true,
+    "movingTooFastForPolicy": false,
+    "obstructed": true
+  },
+  "disablementCode": "OKAY",
+  "alignmentStats": {
+    "boresightAzimuthDeg": "-56.80",
+    "boresightElevationDeg": "84.52",
+    "desiredBoresightAzimuthDeg": "160.00",
+    "desiredBoresightElevationDeg": "66.99"
+  },
+  "stowed": false
+}
+
+2025-09-25 03:59:11 - Starting Pegasus Harvester automation with retry logic
+2025-09-25 03:59:11 - =======================================
+2025-09-25 03:59:11 - Harvest parameters:
+2025-09-25 03:59:11 - - Harvest directory: /home/toby/tele/data/pegasus/20250925_0359
+2025-09-25 03:59:11 - - Start date: 2025-09-18 03:59:11
+2025-09-25 03:59:11 - - End date: 2025-09-25 03:59:11
+2025-09-25 03:59:11 - 
+2025-09-25 03:59:11 - Harvest attempt 1 of 3
+2025-09-25 03:59:11 - --------------------------------------------
+2025-09-25 03:59:11 - Starting Pegasus Harvester...
+2025-09-25 03:59:16 - Pegasus started successfully (PID: 16070)
+2025-09-25 03:59:16 - Running JavaScript automation...
+2025-09-25T03:59:17.035Z - Starting Pegasus harvest automation
+2025-09-25T03:59:17.037Z - Target output directory: /home/toby/tele/data/pegasus/20250925_0359
+2025-09-25T03:59:17.220Z - Connected to Pegasus Harvester browser session
+2025-09-25T03:59:28.034Z - SUCCESS: Automated harvest sequence completed successfully after 1 attempts!
+2025-09-25 03:59:28 - JavaScript automation completed successfully
+2025-09-25 03:59:28 - Shutting down Pegasus Harvester...
+2025-09-25 03:59:31 - Force killing Pegasus Harvester...
+2025-09-25 03:59:32 - SUCCESS: Automation completed on attempt 1
+2025-09-25 03:59:32 - 
+2025-09-25 03:59:32 - Analyzing harvested data:
+2025-09-25 03:59:32 - -----------------------------
+2025-09-25 03:59:32 - Files harvested this run: 201
+2025-09-25 03:59:32 - New file breakdown:
+2025-09-25 03:59:32 -  046 files: 1
+2025-09-25 03:59:32 -  259 files: 29
+2025-09-25 03:59:32 -  260 files: 29
+2025-09-25 03:59:32 -  261 files: 29
+2025-09-25 03:59:32 -  262 files: 29
+2025-09-25 03:59:32 -  263 files: 26
+2025-09-25 03:59:32 -  264 files: 29
+2025-09-25 03:59:32 -  266 files: 26
+2025-09-25 03:59:32 -  csv files: 1
+2025-09-25 03:59:32 -  log files: 1
+2025-09-25 03:59:32 -  xml files: 1
+2025-09-25 03:59:32 - Total files in directory: 402
+2025-09-25 03:59:32 - Total data size: 84M
+2025-09-25 03:59:32 - 
+2025-09-25 03:59:32 - PEGASUS HARVEST: SUCCESS after 1 attempts
+2025-09-25 03:59:32 - 
+2025-09-25 03:59:32 - Preparing data for upload
+2025-09-25 03:59:32 - =======================================
+2025-09-25 03:59:32 - Compressing harvest directory: /home/toby/tele/data/pegasus/20250925_0359
+2025-09-25 03:59:32 - Found 201 files to compress
+2025-09-25 03:59:34 - SUCCESS: Data compressed to /tmp/pegasus_data_20250925_0359.tar.gz (38M)
+2025-09-25 03:59:34 - 
+2025-09-25 03:59:34 - Uploading files to Dropbox
+2025-09-25 03:59:34 - =======================================
+2025-09-25 03:59:34 - Uploading compressed data file to Dropbox...
+2025-09-25 03:59:34 - Target: /20250925_0359/pegasus_data_20250925_0359.tar.gz
+2025-09-25 03:59:34 - Data upload attempt 1 of 3
+ > Uploading "/tmp/pegasus_data_20250925_0359.tar.gz" to "/20250925_0359/pegasus_data_20250925_0359.tar.gz"... DONE

@@ -1,0 +1,162 @@
+====================================
+TELE1 Data Collection and Upload Log
+Started: Thu Sep 25 03:48:35 AM UTC 2025
+====================================
+2025-09-25 03:48:35 - 
+2025-09-25 03:48:35 - Starting data collection and upload process
+2025-09-25 03:48:35 - Log file: /home/toby/tele/log/computer/tele1_2025-09-25_03-48-35.log
+2025-09-25 03:48:35 - Data directory: /home/toby/tele/data/pegasus
+2025-09-25 03:48:35 - 
+2025-09-25 03:48:35 - Downloading config.txt from Dropbox root
+2025-09-25 03:48:35 - ======================================
+2025-09-25 03:48:35 - Config download attempt 1 of 3
+> Skipping file "/config.txt", file exists with the same hash
+2025-09-25 03:48:37 - SUCCESS: config.txt downloaded and saved to current directory
+2025-09-25 03:48:37 - Config file size: 552 bytes
+2025-09-25 03:48:37 - 
+2025-09-25 03:48:37 - Reading configuration file
+2025-09-25 03:48:37 - =========================
+2025-09-25 03:48:37 - Found config file: ./config.txt
+2025-09-25 03:48:37 - Parsing configuration...
+2025-09-25 03:48:37 - Config: EXECUTE = 'auto'
+2025-09-25 03:48:37 - Config: WAIT_TIME = 2 hours
+2025-09-25 03:48:37 - Config: AFTER_WAIT = 'auto'
+2025-09-25 03:48:37 - Config: HARVEST_MODE = 'since last'
+2025-09-25 03:48:37 - Config: FROM_DATE = '2025-08-01 10:00:00'
+2025-09-25 03:48:37 - Config: TO_DATE = '2025-09-23 23:59:59'
+2025-09-25 03:48:37 - WARNING: Duplicate key 'HARVEST_MODE' found, using last occurrence
+2025-09-25 03:48:37 - Config: HARVEST_MODE = 'all'
+2025-09-25 03:48:37 - 
+2025-09-25 03:48:37 - Final Configuration:
+2025-09-25 03:48:37 - -------------------
+2025-09-25 03:48:37 - EXECUTE = 'auto'
+2025-09-25 03:48:37 - WAIT_TIME = 2 hours
+2025-09-25 03:48:37 - AFTER_WAIT = 'auto'
+2025-09-25 03:48:37 - HARVEST_MODE = 'all'
+2025-09-25 03:48:37 - FROM_DATE = '2025-08-01 10:00:00'
+2025-09-25 03:48:37 - TO_DATE = '2025-09-23 23:59:59'
+2025-09-25 03:48:37 - 
+2025-09-25 03:48:37 - System Information:
+2025-09-25 03:48:37 - --------------------
+2025-09-25 03:48:37 - Hostname: tele1
+2025-09-25 03:48:37 - Uptime: up 4 hours, 20 minutes
+2025-09-25 03:48:37 - Kernel: 6.14.0-29-generic
+2025-09-25 03:48:37 - Last Reboot: 2025-09-24 23:27
+2025-09-25 03:48:37 - CPU Info: Intel Atom(R) x6413E Processor @ 1.50GHz
+2025-09-25 03:48:37 - CPU MHz: 2700.81
+2025-09-25 03:48:37 - Physical Memory: 15268 MB 
+2025-09-25 03:48:37 - Available Memory: 11504 MB 
+2025-09-25 03:48:37 - Disk Space Available: 137G
+2025-09-25 03:48:37 - Process Count: 270
+2025-09-25 03:48:37 - Network Interfaces: lo enp2s0 enp3s0
+2025-09-25 03:48:37 - USB Devices Detected: 5
+2025-09-25 03:48:37 - USB Device List:
+2025-09-25 03:48:37 -  Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+2025-09-25 03:48:37 -  Bus 001 Device 002: ID 046d:c077 Logitech, Inc. Mouse
+2025-09-25 03:48:37 -  Bus 001 Device 003: ID 413c:2107 Dell Computer Corp. KB212-B Quiet Key Keyboard
+2025-09-25 03:48:37 -  Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub
+2025-09-25 03:48:37 -  Bus 002 Device 002: ID 067b:2732 Prolific Technology, Inc. USB Storage Device
+2025-09-25 03:48:37 - 
+2025-09-25 03:48:37 - Collecting Starlink JSON diagnostics
+STARLINK DIAGNOSTIC JSON
+========================
+{
+  "id": "ut4018060f-02617119-18cd81df",
+  "hardwareVersion": "mini1_prod2",
+  "softwareVersion": "2025.09.11.mr63477",
+  "utcOffsetS": 36000,
+  "hardwareSelfTest": "PASSED",
+  "hardwareSelfTestCodesList": [],
+  "alerts": {
+    "dishIsHeating": false,
+    "dishThermalThrottle": false,
+    "dishThermalShutdown": false,
+    "powerSupplyThermalThrottle": false,
+    "motorsStuck": false,
+    "mastNotNearVertical": false,
+    "slowEthernetSpeeds": false,
+    "softwareInstallPending": true,
+    "movingTooFastForPolicy": false,
+    "obstructed": true
+  },
+  "disablementCode": "OKAY",
+  "alignmentStats": {
+    "boresightAzimuthDeg": "-53.78",
+    "boresightElevationDeg": "84.81",
+    "desiredBoresightAzimuthDeg": "160.00",
+    "desiredBoresightElevationDeg": "66.99"
+  },
+  "stowed": false
+}
+
+2025-09-25 03:48:39 - Starting Pegasus Harvester automation with retry logic
+2025-09-25 03:48:39 - =======================================
+2025-09-25 03:48:39 - Harvest parameters:
+2025-09-25 03:48:39 - - Harvest directory: /home/toby/tele/data/pegasus/20250925_0348
+2025-09-25 03:48:39 - - Start date: 2025-09-18 03:48:39
+2025-09-25 03:48:39 - - End date: 2025-09-25 03:48:39
+2025-09-25 03:48:39 - 
+2025-09-25 03:48:39 - Harvest attempt 1 of 3
+2025-09-25 03:48:39 - --------------------------------------------
+2025-09-25 03:48:39 - Starting Pegasus Harvester...
+2025-09-25 03:48:44 - Pegasus started successfully (PID: 11991)
+2025-09-25 03:48:44 - Running JavaScript automation...
+2025-09-25T03:48:45.088Z - Starting Pegasus harvest automation
+2025-09-25T03:48:47.297Z - Connected to Pegasus Harvester App
+2025-09-25T03:48:47.297Z - Harvest attempt 1 with mode 'all'
+2025-09-25T03:48:47.357Z - CRITICAL ERROR: SyntaxError: Failed to execute 'querySelector' on 'Document': 'button:text("Start")' is not a valid selector.
+2025-09-25T03:48:47.358Z - FATAL ERROR: Puppeteer automation failed: SyntaxError: Failed to execute 'querySelector' on 'Document': 'button:text("Start")' is not a valid selector.
+2025-09-25 03:48:47 - JavaScript automation failed with exit code: 1
+2025-09-25 03:48:47 - Shutting down Pegasus Harvester...
+2025-09-25 03:48:50 - Force killing Pegasus Harvester...
+2025-09-25 03:48:51 - FAILED: Automation failed on attempt 1
+2025-09-25 03:48:51 - Waiting 5 seconds before retry...
+2025-09-25 03:48:56 - 
+2025-09-25 03:48:56 - Harvest attempt 2 of 3
+2025-09-25 03:48:56 - --------------------------------------------
+2025-09-25 03:48:56 - Starting Pegasus Harvester...
+2025-09-25 03:49:01 - Pegasus started successfully (PID: 12517)
+2025-09-25 03:49:01 - Running JavaScript automation...
+2025-09-25T03:49:01.926Z - Starting Pegasus harvest automation
+2025-09-25T03:49:04.229Z - Connected to Pegasus Harvester App
+2025-09-25T03:49:04.230Z - Harvest attempt 1 with mode 'all'
+2025-09-25T03:49:04.274Z - CRITICAL ERROR: SyntaxError: Failed to execute 'querySelector' on 'Document': 'button:text("Start")' is not a valid selector.
+2025-09-25T03:49:04.274Z - FATAL ERROR: Puppeteer automation failed: SyntaxError: Failed to execute 'querySelector' on 'Document': 'button:text("Start")' is not a valid selector.
+2025-09-25 03:49:04 - JavaScript automation failed with exit code: 1
+2025-09-25 03:49:04 - Shutting down Pegasus Harvester...
+2025-09-25 03:49:07 - Force killing Pegasus Harvester...
+2025-09-25 03:49:08 - FAILED: Automation failed on attempt 2
+2025-09-25 03:49:08 - Waiting 5 seconds before retry...
+2025-09-25 03:49:13 - 
+2025-09-25 03:49:13 - Harvest attempt 3 of 3
+2025-09-25 03:49:13 - --------------------------------------------
+2025-09-25 03:49:13 - Starting Pegasus Harvester...
+2025-09-25 03:49:18 - Pegasus started successfully (PID: 13042)
+2025-09-25 03:49:18 - Running JavaScript automation...
+2025-09-25T03:49:18.980Z - Starting Pegasus harvest automation
+2025-09-25T03:49:20.470Z - CRITICAL ERROR: net::ERR_CONNECTION_REFUSED at http://localhost:9222
+2025-09-25T03:49:20.471Z - FATAL ERROR: Puppeteer automation failed: net::ERR_CONNECTION_REFUSED at http://localhost:9222
+2025-09-25 03:49:20 - JavaScript automation failed with exit code: 1
+2025-09-25 03:49:20 - Shutting down Pegasus Harvester...
+2025-09-25 03:49:20 - FAILED: Automation failed on attempt 3
+2025-09-25 03:49:20 - 
+2025-09-25 03:49:20 - Analyzing harvested data:
+2025-09-25 03:49:20 - -----------------------------
+2025-09-25 03:49:20 - Total files in directory: 0
+2025-09-25 03:49:20 - Total data size: 8.0K
+2025-09-25 03:49:20 - 
+2025-09-25 03:49:20 - PEGASUS HARVEST: FAILED after 3 attempts
+2025-09-25 03:49:20 - No new data collected
+2025-09-25 03:49:20 - 
+2025-09-25 03:49:20 - Preparing data for upload
+2025-09-25 03:49:20 - =======================================
+2025-09-25 03:49:20 - INFO: No harvest data to compress (harvest failed)
+2025-09-25 03:49:20 - 
+2025-09-25 03:49:20 - Uploading files to Dropbox
+2025-09-25 03:49:20 - =======================================
+2025-09-25 03:49:20 - INFO: No compressed data file to upload
+2025-09-25 03:49:20 - Uploading log file to Dropbox...
+2025-09-25 03:49:20 - Target: /20250925_0348/tele1_2025-09-25_03-48-35.log
+2025-09-25 03:49:20 - Log upload attempt 1 of 3
+ > Uploading "/home/toby/tele/log/computer/tele1_2025-09-25_03-48-35.log" to "/20250925_0348/tele1_2025-09-25_03-48-35.log"... DONE
+2025-09-25 03:49:23 - SUCCESS: Log file uploaded on attempt 1

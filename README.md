@@ -2,7 +2,7 @@
 
 ---
 
-# This code is under development to harvest and upload seismic data from Nanometrics Pegasus using the proprietary Pegasus Harvester software. 
+## This code is under development to harvest and upload seismic data from Nanometrics Pegasus using the proprietary Pegasus Harvester software. 
 
 The challenges:
 

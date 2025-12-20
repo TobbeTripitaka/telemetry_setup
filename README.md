@@ -11,3 +11,5 @@ The challenges:
 - Ensure that the computer powers down at the end
 - Ensure successful data upload
 - Provide remote access to the computer
+
+Future additions to add other environmental sensors. 

@@ -3,6 +3,7 @@
 ################################################################################
 # Notification Library
 # Functions for sending email notifications and collecting diagnostics
+# Tobias Staal 2025
 ################################################################################
 
 # Prevent multiple sourcing

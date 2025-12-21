@@ -3,6 +3,7 @@
 ################################################################################
 # Configuration Management Library
 # Functions for downloading, parsing, and validating configuration
+# Tobias Staal 2025
 ################################################################################
 
 # Prevent multiple sourcing
@@ -260,7 +261,7 @@ validate_after_wait_value() {
     local value_normalized
     value_normalized=$(echo "$value" | tr '[:upper:]' '[:lower:]' | sed 's/  */ /g')
     
-    validate_enum "$value_normalized" "auto" "power off"
+    validate_enum "$value_normalised" "auto" "power off"
 }
 
 # Validate HARVEST_MODE parameter
@@ -269,7 +270,7 @@ validate_harvest_mode_value() {
     local value_normalized
     value_normalized=$(echo "$value" | tr '[:upper:]' '[:lower:]' | sed 's/  */ /g')
     
-    validate_enum "$value_normalized" "all" "since last" "date range"
+    validate_enum "$value_normalised" "all" "since last" "date range"
 }
 
 ################################################################################

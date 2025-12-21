@@ -3,6 +3,7 @@
 ################################################################################
 # Timelapse Camera Library
 # Functions for downloading camera files (FUTURE IMPLEMENTATION)
+# Tobias Staal 2025
 ################################################################################
 
 # Prevent multiple sourcing

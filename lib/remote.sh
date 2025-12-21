@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # remote.sh - Remote desktop and SSH connection info for TELE1
+# Tobias Staal 2025
 
 [[ -n "${REMOTE_LIB_LOADED:-}" ]] && return 0
 readonly REMOTE_LIB_LOADED=1

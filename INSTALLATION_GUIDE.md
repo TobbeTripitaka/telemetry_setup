@@ -3,7 +3,7 @@
 This guide covers:
 
 - Fresh installation on a new Shuttle SPCEL 03 (or similar)
-- Migration from TELE1 v2.0 to v3.0
+- Migration from TELE1 v0.2.0 to v0.3.0
 - Verification and troubleshooting steps
 
 ---
@@ -26,28 +26,31 @@ This guide covers:
 
 Install required packages:
 
+```
 sudo apt update
 sudo apt install -y
 bash curl jq git nodejs npm chromium-browser
 openssh-server systemd
-
+```
 
 Confirm versions:
 
+```
 bash --version
 curl --version
 jq --version
 node --version
 chromium-browser --version
 systemctl --version
-
+```
 
 ### 1.4 Pegasus Harvester
 
 The Pegasus Harvester binary must be installed and executable at:
 
+```
 /opt/PegasusHarvester/pegasus-harvester
-
+```
 
 If it lives elsewhere, adjust `PEGASUS_BIN` in `tele1.sh`.
 
@@ -57,11 +60,13 @@ If it lives elsewhere, adjust `PEGASUS_BIN` in `tele1.sh`.
 
 On the target machine (as user `tele`):
 
+```
 mkdir -p /home/tele/tele/{lib,js,log/computer,data/pegasus,config,state}
-
+```
 
 Final layout:
 
+```
 /home/tele/tele/
 tele1.sh
 credentials.txt
@@ -83,7 +88,7 @@ data/
 pegasus/
 config/
 state/
-
+```
 
 ---
 
@@ -95,20 +100,23 @@ All script files should be owned by `tele` and executable.
 
 Copy the main script:
 
+```
 cp tele1.sh /home/tele/tele/tele1.sh
 chmod 755 /home/tele/tele/tele1.sh
 chown tele:tele /home/tele/tele/tele1.sh
+```
 
+If you are upgrading from v0.2.0, back up the old script first:
 
-If you are upgrading from v2.0, back up the old script first:
-
+```
 cp /home/tele/tele/tele1.sh /home/tele/tele/tele1_v2_backup.sh
-
+```
 
 ### 3.2 Libraries
 
 Copy all library scripts:
 
+```
 cp common.sh hardware.sh config.sh harvest.sh notification.sh camera.sh remote.sh
 /home/tele/tele/lib/
 
@@ -118,13 +126,14 @@ cp dropbox_uploader.sh /home/tele/tele/lib/dropbox_uploader.sh
 
 chmod 755 /home/tele/tele/lib/.sh
 chown tele:tele /home/tele/tele/lib/.sh
-
+```
 
 ### 3.3 JavaScript helpers
 
+```
 cp pegasus_harvest.js starlink_get_json.js /home/tele/tele/js/
 chown tele:tele /home/tele/tele/js/*.js
-
+```
 
 ---
 
@@ -136,6 +145,7 @@ All credentials are kept in `credentials.txt` next to `tele1.sh`.
 
 As user `tele`:
 
+```
 cat > /home/tele/tele/credentials.txt <<"EOF"
 Email credentials
 
@@ -149,7 +159,7 @@ EOF
 
 chmod 600 /home/tele/tele/credentials.txt
 chown tele:tele /home/tele/tele/credentials.txt
-
+```
 
 Notes:
 
@@ -162,17 +172,19 @@ Notes:
 
 As user `tele`:
 
+```
 cd /home/tele/tele/lib
 chmod +x dropbox_uploader.sh
 ./dropbox_uploader.sh
-
+```
 
 Follow the interactive instructions, which create `~/.dropbox_uploader`.
 
 Test:
 
+```
 ./dropbox_uploader.sh list /
-
+```
 
 ---
 
@@ -182,23 +194,26 @@ Test:
 
 ### 5.1 Install service file
 
+```
 sudo cp tele1.service /etc/systemd/system/tele1.service
 sudo chmod 644 /etc/systemd/system/tele1.service
 sudo systemctl daemon-reload
 sudo systemctl enable tele1.service
-
+```
 
 Check for errors:
 
+```
 sudo systemd-analyse verify /etc/systemd/system/tele1.service
-
+```
 
 ### 5.2 Manual start via systemd
 
+```
 sudo systemctl start tele1.service
 sudo systemctl status tele1.service
 journalctl -u tele1.service -f
-
+```
 
 The service:
 
@@ -216,16 +231,18 @@ Configuration for post-actions is stored in Dropbox as `config.txt`. It is downl
 
 Create a local `config.txt` (for reference):
 
+```
 EXECUTE = simple
 STANDBY = 0
-
+```
 
 Upload this file to Dropbox using `dropbox_uploader.sh` or the web UI.
 
 Example using the uploader:
 
+```
 /home/tele/tele/lib/dropbox_uploader.sh upload config.txt /config.txt
-
+```
 
 ### 6.2 Parameters
 
@@ -252,9 +269,10 @@ This section assumes no previous TELE1 install.
 
 ### Step 1 – Create user and directories
 
+```
 sudo adduser --disabled-password --gecos "" tele
 sudo -u tele mkdir -p /home/tele/tele/{lib,js,log/computer,data/pegasus,config,state}
-
+```
 
 ### Step 2 – Install packages
 
@@ -264,13 +282,9 @@ Follow section 1.3 to install required packages.
 
 Place the Pegasus Harvester binary at:
 
+```
 /opt/PegasusHarvester/pegasus-harvester
-
-
-Ensure it is executable:
-
-sudo chmod 755 /opt/PegasusHarvester/pegasus-harvester
-
+```
 
 ### Step 4 – Deploy TELE1 scripts
 
@@ -282,14 +296,15 @@ Ensure ownership is `tele:tele` and scripts are executable.
 
 As user `tele`:
 
+```
 cd /home/tele/tele/lib
 ./dropbox_uploader.sh
-
+```
 
 Complete the OAuth steps and test:
-
+```
 ./dropbox_uploader.sh list /
-
+```
 
 ### Step 6 – Configure credentials
 
@@ -302,27 +317,27 @@ Copy `tele1.service` into `/etc/systemd/system/` and enable it as in section 5.1
 ### Step 8 – Create initial config.txt in Dropbox
 
 Create a local file:
-
+```
 EXECUTE = simple
 STANDBY = 0
-
+```
 
 Upload to Dropbox:
-
+```
 /home/tele/tele/lib/dropbox_uploader.sh upload config.txt /config.txt
-
+```
 
 ### Step 9 – First test run (manual)
 
 Run directly:
-
+```
 sudo -u tele /home/tele/tele/tele1.sh
-
+```
 
 Monitor log:
-
+```
 tail -f /home/tele/tele/log/computer/tele1_*.log
-
+```
 
 Check for:
 
@@ -334,11 +349,11 @@ Check for:
 ### Step 10 – Systemd test
 
 Run via systemd:
-
+```
 sudo systemctl start tele1.service
 sudo systemctl status tele1.service
 journalctl -u tele1.service -f
-
+```
 
 Confirm:
 
@@ -347,21 +362,12 @@ Confirm:
 - Email is sent
 - System powers down at the end (if not blocked by other services)
 
-### Step 11 – Scheduling (optional)
-
-To run once per day at 10:00:
-
-sudo crontab -e
-Add:
-
-0 10 * * * /usr/bin/systemctl start tele1.service
-
 
 ---
 
-## 8. Migration from TELE1 v2.0
+## 8. Migration from TELE1 v0.2.0
 
-If you already have TELE1 v2.0 installed, follow this section.
+If you already have TELE1 v0.2.0 installed, follow this section.
 
 ### 8.1 Backup existing installation
 
@@ -446,14 +452,14 @@ Before relying on TELE1 in the field, confirm:
 ### 10.1 tele1.sh fails immediately
 
 Check:
-
+```
 bash -n /home/tele/tele/tele1.sh
-
+```
 
 Look at:
-
+```
 tail -n 50 /home/tele/tele/log/computer/tele1_*.log
-
+```
 
 Common causes:
 
@@ -483,9 +489,9 @@ Confirm:
 
 
 Check network:
-
+```
 ping -c 1 8.8.8.8
-
+```
 
 Check TELE1 logs for `upload_harvest_data` and `upload_log_file` messages.
 
@@ -506,8 +512,8 @@ Confirm credentials in `credentials.txt` and test with a minimal curl command as
 ## 12. Where to Next?
 
 - See `README.md` for a complete overview of features and behaviour
-- See `CHANGES_SUMMARY.md` for a detailed v2.0 → v3.0 change log
-- See `DELIVERABLES.md` for a list of all files and their roles
 - See `VISUAL_SUMMARY.txt` for diagrams and flowcharts
 
-This concludes the installation guide for TELE1 v3.0.
+This concludes the installation guide for TELE1 v0.3.0. Let me know if something is missing. 
+
+Toby

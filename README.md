@@ -110,7 +110,7 @@ EMAIL_PASSWORD="YOUR_APP_PASSWORD"
 
 ## 4. Execution Flow (v0.3.0)
 
-The v3.0 flow is:
+The v0.3.0 flow is:
 
 1. **System preparation**
    - Check dependencies

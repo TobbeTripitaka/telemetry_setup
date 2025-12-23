@@ -94,7 +94,17 @@ It is intended for unattended operation at remote sites with limited power and i
   - Systemd service unit, type `oneshot`
 
 - `credentials.txt`
-  - Local file containing email credentials and other secrets
+  - Local file containing email credentials and other secrets in this format:
+
+
+`
+# /home/tele/tele/credentials.txt
+
+EMAIL_TO="YOUR_TO_ADDRESS"
+EMAIL_FROM="YOUR_FROM_ADDRESS"
+EMAIL_PASSWORD="YOUR_APP_PASSWORD"
+`
+
 
 ---
 

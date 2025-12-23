@@ -1,4 +1,4 @@
-# TELE1 v3.0
+# TELE1 v0.3.0
 
 Automated telemetry collection and upload system for Pegasus data loggers and Starlink internet connections on a Shuttle SPCEL 03 (or similar Linux host).
 
@@ -108,7 +108,7 @@ EMAIL_PASSWORD="YOUR_APP_PASSWORD"
 
 ---
 
-## 4. Execution Flow (v3.0)
+## 4. Execution Flow (v0.3.0)
 
 The v3.0 flow is:
 

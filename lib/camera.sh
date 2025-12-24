@@ -287,33 +287,6 @@ get_camera_status() {
     return 1
 }
 
-################################################################################
-# INTEGRATION NOTES
-################################################################################
-
-# INTEGRATION CHECKLIST:
-# 
-# 1. Identify your camera model and capabilities
-# 2. Determine connection method (FTP, HTTP, proprietary API)
-# 3. Test camera connectivity and authentication
-# 4. Implement file listing/download mechanism
-# 5. Test compression and cleanup
-# 6. Integrate into main workflow
-# 7. Add error handling and retries
-# 8. Test end-to-end workflow
-#
-# COMMON CAMERA TYPES:
-# - GoPro: HTTP API or USB mount
-# - IP cameras: RTSP, ONVIF, or proprietary HTTP API
-# - Trail cameras: SD card or WiFi download
-# - Raspberry Pi camera: Direct file access
-#
-# CONSIDERATIONS:
-# - Power management (camera may go to sleep)
-# - Storage limits (clear old files regularly)
-# - Network reliability (retry failed downloads)
-# - File naming conventions (timestamp-based)
-# - Image/video format and compression
 
 ################################################################################
 # EXPORT FUNCTIONS

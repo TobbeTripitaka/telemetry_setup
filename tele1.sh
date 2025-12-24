@@ -2,7 +2,6 @@
 
 ################################################################################
 # TELE1 - Main Orchestration Script (updated with credentials loading)
-# Uses existing lib/ scripts but loads credentials from credentials.txt
 ################################################################################
 
 set -euo pipefail
@@ -17,7 +16,7 @@ JS_DIR="${SCRIPT_DIR}/js"
 CONFIG_DIR="${SCRIPT_DIR}/config"
 STATE_DIR="${SCRIPT_DIR}/state"
 DATA_DIR="/home/tele/tele/data/pegasus"
-LOG_DIR="/home/tele/tele/log/computer"
+LOG_DIR="/home/tele/tele/log"
 
 DROPBOX_SCRIPT="/home/tele/tele/lib/dropbox_uploader.sh"
 PEGASUS_BIN="/opt/PegasusHarvester/pegasus-harvester"
@@ -42,7 +41,7 @@ if [[ -f "$CREDENTIALS_FILE" ]]; then
   # shellcheck source=/dev/null
   source "$CREDENTIALS_FILE"
 else
-  echo "FATAL: Credentials file not found: $CREDENTIALS_FILE" >&2
+  echo "FATAL: Email address and password file not found: $CREDENTIALS_FILE" >&2
   exit 1
 fi
 
@@ -94,12 +93,6 @@ log_info "=================================================="
 log_info "Start time: $SCRIPT_START_TIME"
 log_info "Log file: $LOG_FILE"
 log_info ""
-
-################################################################################
-# ORIGINAL STAGES (from your existing script)
-# NOTE: This section should match your current tele1.sh logic.
-# For now, keep your original stages here unchanged.
-################################################################################
 
 # STAGE 1: System preparation
 log_info "STAGE 1: System Preparation"

@@ -3,6 +3,7 @@
 ################################################################################
 # Common Utilities Library
 # Shared functions used across all modules
+# Tobias Staal 2025
 ################################################################################
 
 # Prevent multiple sourcing

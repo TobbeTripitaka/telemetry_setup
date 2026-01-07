@@ -49,7 +49,7 @@ tele ALL=(ALL) NOPASSWD: /sbin/poweroff, /usr/sbin/poweroff
 ```
 
 
-## BIOS Settings (F7)
+## BIOS Settings (F2 on Shuttle SPCEL03)
 
 Enable RTC (real-time clock) power-on.
 

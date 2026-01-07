@@ -39,3 +39,10 @@ Next-generation builds will likely use a smaller design.
 After testing several models, I selected this **solid-state relay** for its reliable performance and solid specifications. A cheaper alternative would likely work as well.
 
 [RS Components – Solid State Relay (Part 9221978)](https://au.rs-online.com/web/p/solid-state-relays/9221978?srsltid=AfmBOoqmeamFw7_ystevtvX469QxWLCAx3F5kNwPXLLa6v4AUEZ_Z2qg)
+
+
+## Connectors
+
+Some connectors availible from here
+
+[CTALS](https://www.ctals.com.au/collections/waterproof-submersible-products)

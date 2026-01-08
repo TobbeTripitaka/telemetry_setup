@@ -123,7 +123,16 @@ To open an SSH session to that remote machine:
 
 (or use the hostname instead of the IP if you prefer).
 
-4. Ending the SSH session
+
+4. Download files:
+
+On OSX e.g.:
+```
+scp -r tele@100.114.105.23:/home/tele/tele/lib backup_250108/lib
+```
+
+
+5. Ending the SSH session
 
 When finished, simply exit the remote shell:
 

@@ -42,7 +42,8 @@ This guide describes the tested system: **Ubuntu 20.04 LTS** on a **Shuttle SPCE
 ## Hardware Requirements
 
 
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_4.JPG" width="450">
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_4.JPG" width="500">
+
 Test setup. _photo: Tobias Stål_
 
 
@@ -68,7 +69,8 @@ https://www.jbhifi.com.au/products/starlink-mini
 
 **Power management:** In the Starlink app, turn off the snow-melting feature to reduce power consumption.
 
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_1.JPG" width="450">
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_1.JPG" width="500">
+
 Test setup. _photo: Tobias Stål_
 
 **Power regulator (12V step-down for Starlink):**  
@@ -78,7 +80,8 @@ https://campervanbuilders.com.au/products/starlink-easy-12-volt-mini-booster?var
 
 This case is big enough, in future I'll build in a smaller enclosure.
 
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_2.JPG" width="450">
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_2.JPG" width="500">
+
 Test setup. _photo: Tobias Stål_
 
 

@@ -5,7 +5,7 @@ Automated seismic data collection, Starlink diagnostics, and cloud upload for un
 TELE1 runs on Ubuntu 20.04 LTS (tested on Shuttle SPCEL03) and harvests data from Pegasus instruments via a Starlink internet connection. Data is compressed and uploaded to Dropbox with email status notifications.
 
 
-![GRIT logo](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png)
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png" width="150">
 
 Designed for remote sites with minimal power and intermittent connectivity.
 

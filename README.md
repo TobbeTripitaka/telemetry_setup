@@ -1,171 +1,75 @@
-# TELE1 v0.3.0
+# TELE1 – Remote Data Collection System
 
-Automated telemetry collection and upload system for Pegasus data loggers and Starlink internet connections on a Shuttle SPCEL 03 (or similar Linux host).
+Automated seismic data collection, Starlink diagnostics, and cloud upload for unattended field deployments.
 
-This version focuses on a simpler configuration model, robust shutdown behaviour, and clearer documentation.
+TELE1 runs on Ubuntu 20.04 LTS (tested on Shuttle SPCEL03) and harvests data from Pegasus instruments via a Starlink internet connection. Data is compressed and uploaded to Dropbox with email status notifications.
 
----
 
-## 1. Purpose
+![GRIT logo](https://github.com/TobbeTripitaka/Tobias_Staal/img/GRIT_final.png)
 
-TELE1 automates:
-
-- Harvesting data from a Pegasus data logger
-- Collecting basic Starlink diagnostics
-- Compressing and uploading data and logs to Dropbox
-- Sending a status email with a log attachment
-- Powering down the computer safely after completion
-
-It is intended for unattended operation at remote sites with limited power and intermittent connectivity.
+Designed for remote sites with minimal power and intermittent connectivity.
 
 ---
 
-## 2. Key Features (v3.0)
+## Features
 
-- **Data-first execution**: Harvest and upload before configuration-driven post-actions
-- **Simple configuration**: Two primary options – `EXECUTE` and `STANDBY`
-- **Post-action modes**:
-  - `simple` – email and power down
-  - `remote` – enable SSH, wait, then power down
-  - `clean` – delete old data/logs, then power down
-  - `update` – reserved for future update automation
-- **Guaranteed shutdown**:
-  - Internal timeout (1 hour 50 minutes) with cleanup and power-down
-  - Systemd timeout (2 hours) as a last resort
-- **Data compression**: Harvest data compressed to `tar.gz` before upload
-- **Email reporting**: Status email summarising harvest and upload results
-- **Dropbox integration**: Data and logs uploaded via `dropbox_uploader.sh`
-- **SSH support**: Optional SSH daemon enablement for remote access
-- **Cleanup tools**: Automatic removal of old harvests and logs
-- **Extensive logging**: Detailed log file for each run in `log/computer/`
+- **Automated data harvesting** – Pegasus data logger via USB
+- **Starlink diagnostics** – Connection quality and signal metrics
+- **Cloud upload** – Compressed archives to Dropbox via rclone
+- **Email notifications** – Status reports with log attachments
+- **Remote access** – Tailscale SSH for debugging and reconfiguration
+- **Power management** – Automatic shutdown with configurable wait times
+- **Data cleanup** – Optional automatic deletion of old harvests
 
 ---
 
-## 3. Architecture Overview
+## Execution Modes
 
-### 3.1 Components
+Configure behaviour after upload via `config.txt` in Dropbox:
 
-- `tele1.sh`
-  - Main orchestration script
-  - Controls stages, logging, and shutdown
+| Mode | Behaviour |
+|------|-----------|
+| `auto` | Harvest, upload, notify, power down immediately |
+| `ssh` | Harvest, upload, notify, wait for SSH access, then power down |
+| `clear` | As `auto`, plus delete all local data and logs |
+| `vnc` | Reserved for future release |
 
-- `lib/common.sh`
-  - Logging functions
-  - State management
-  - Utility helpers
-
-- `lib/hardware.sh`
-  - Hardware presence checks
-  - Network checks
-  - System information
-
-- `lib/config.sh` (legacy)
-  - Legacy configuration parsing (v2.0 style)
-  - Left for compatibility but not used for v3.0 post-actions
-
-- `lib/harvest.sh`
-  - Pegasus harvester automation
-  - Starlink router scraping via Node/Chromium (through JS scripts)
-
-- `lib/upload.sh` (from `upload_updated.sh`)
-  - Data compression
-  - Data and log upload to Dropbox
-
-- `lib/notification.sh`
-  - Starlink diagnostics collection
-  - Status report building
-  - Email sending, using Gmail over `curl`
-
-- `lib/postaction.sh`
-  - New in v3.0
-  - Downloads and parses `config.txt` from Dropbox
-  - Executes EXECUTE/ STANDBY-driven actions
-
-- `js/pegasus_harvest.js`
-  - Node.js script to drive Pegasus web UI and download data
-
-- `js/starlink_get_json.js`
-  - Node.js script to query Starlink status JSON
-
-- `dropbox_uploader.sh`
-  - Third-party Dropbox uploader script
-
-- `tele1.service`
-  - Systemd service unit, type `oneshot`
-
-- `credentials.txt`
-  - Local file containing email credentials and other secrets in this format:
-
-
-```
-# /home/tele/tele/credentials.txt
-
-EMAIL_TO="YOUR_TO_ADDRESS"
-EMAIL_FROM="YOUR_FROM_ADDRESS"
-EMAIL_PASSWORD="YOUR_APP_PASSWORD"
-```
-
+For `ssh` mode, set `WAIT_TIME_SSH` (in hours) to control how long the system remains powered on.
 
 ---
 
-## 4. Execution Flow (v0.3.0)
+## Installation
 
-The v0.3.0 flow is:
+Full setup instructions in `INSTALLATION.md`, covering:
 
-1. **System preparation**
-   - Check dependencies
-   - Ensure directories exist
-   - Open log file
-   - Gather system info
-
-2. **Hardware checks**
-   - USB devices present
-   - Pegasus binary available
-   - Network interfaces present
-
-3. **Data collection**
-   - Collect Starlink diagnostics
-   - Run Pegasus harvest (with retry logic)
-   - Track harvest directory, file count, and size
-
-4. **Compression**
-   - Compress harvest directory to `tar.gz`
-   - Record archive size and file count in state
-
-5. **Upload**
-   - Upload compressed data to Dropbox
-   - Upload log file to Dropbox
-   - Update state for data and log upload
-
-6. **Configuration (post-upload)**
-   - Download `config.txt` from Dropbox
-   - Parse `EXECUTE` and `STANDBY`
-   - Load defaults if download fails
-
-7. **Post-action**
-   - Based on `EXECUTE`, run one of:
-     - `simple`: nothing extra – email and shutdown
-     - `remote`: enable SSH and wait `STANDBY` seconds
-     - `clean`: delete old data and logs
-     - `update`: placeholder
-
-8. **Notification**
-   - Build a status report from state
-   - Format subject and body
-   - Send email with log attachment
-   - Create local notification file if email fails
-
-9. **Shutdown**
-   - Clean temporary files
-   - Power down via systemd or direct `poweroff -f` as fallback
+1. Ubuntu 20.04 LTS installation and timezone setup
+2. User account creation (`tele` with autologin)
+3. System package installation (rclone, Node.js, Tailscale, etc.)
+4. BIOS configuration (RTC power-on for Shuttle SPCEL03)
+5. Tailscale VPN setup for remote SSH access
+6. Project structure deployment
+7. Credentials and cloud storage configuration
+8. System verification and testing
 
 ---
 
-## 5. Configuration
+## Quick Start
 
-All secrets are stored in `credentials.txt` which sits next to `tele1.sh`.
+### Prerequisites
 
-### 5.1 Credentials file
+- Ubuntu 20.04 LTS on x86-64 hardware
+- Pegasus data logger connected via USB
+- Starlink Mini or equivalent internet
+- Dropbox account (free tier OK)
+- Gmail account (for email notifications)
 
-Create `/home/tele/tele/credentials.txt`:
+See INSTALLATION.md for:
 
+- Step-by-step setup
+- Verification checklist
+- Troubleshooting guide
+- All resource links
+
+For issues or feedback, open a GitHub issue.
+
+Version: 0.3.0 | Updated: 9 January 2026

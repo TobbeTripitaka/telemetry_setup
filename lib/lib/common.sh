@@ -3,7 +3,6 @@
 ################################################################################
 # Common Utilities Library
 # Shared functions used across all modules
-# Tobias Staal 2025
 ################################################################################
 
 # Prevent multiple sourcing
@@ -24,10 +23,10 @@ readonly LOG_LEVEL_FATAL=4
 # Current log level (can be overridden)
 LOG_LEVEL=${LOG_LEVEL:-$LOG_LEVEL_INFO}
 
-# Initialize log file with header
+# Initialise log file with header
 init_log_file() {
     local log_file="$1"
-    
+
     {
         echo "========================================================================"
         echo "TELE1 Data Collection and Upload Log"
@@ -47,15 +46,14 @@ log_message() {
     local message="$2"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
+
     local log_line="$timestamp [$level] $message"
-    
+
     # Write to log file if LOG_FILE is set
     if [[ -n "${LOG_FILE:-}" ]]; then
-    echo "$log_line" >> "$LOG_FILE" 2>/dev/null || true
+        echo "$log_line" >> "$LOG_FILE" 2>/dev/null || true
     fi
 
-    
     # Also echo to console
     echo "$log_line"
 }
@@ -96,20 +94,20 @@ retry_with_timeout() {
     local timeout="$3"
     shift 3
     local command=("$@")
-    
+
     local attempt=1
     local delay="$base_delay"
-    
+
     while [[ $attempt -le $max_attempts ]]; do
         log_info "Attempt $attempt of $max_attempts: ${command[*]}"
-        
+
         if timeout "$timeout" "${command[@]}"; then
             log_info "Command succeeded on attempt $attempt"
             return 0
         else
             local exit_code=$?
             log_warn "Command failed on attempt $attempt (exit code: $exit_code)"
-            
+
             if [[ $attempt -lt $max_attempts ]]; then
                 log_info "Waiting ${delay}s before retry..."
                 sleep "$delay"
@@ -117,10 +115,10 @@ retry_with_timeout() {
                 delay=$((delay * 2))
             fi
         fi
-        
+
         ((attempt++))
     done
-    
+
     log_error "Command failed after $max_attempts attempts"
     return 1
 }
@@ -132,7 +130,7 @@ retry_with_timeout() {
 # Check if a command/binary exists
 check_command() {
     local cmd="$1"
-    
+
     if command -v "$cmd" &> /dev/null; then
         log_debug "Command found: $cmd"
         return 0
@@ -146,7 +144,7 @@ check_command() {
 check_path() {
     local path="$1"
     local type="${2:-file}"  # file or directory
-    
+
     if [[ "$type" == "directory" ]]; then
         if [[ -d "$path" ]]; then
             log_debug "Directory exists: $path"
@@ -169,7 +167,7 @@ check_path() {
 # Check all system dependencies
 check_dependencies() {
     log_info "Checking system dependencies..."
-    
+
     local all_ok=0
     local required_commands=(
         "curl"
@@ -179,28 +177,25 @@ check_dependencies() {
         "timeout"
         "jq"
         "lsusb"
+        "rclone"
     )
-    
+
     for cmd in "${required_commands[@]}"; do
         if ! check_command "$cmd"; then
             all_ok=1
         fi
     done
-    
-    # Check required paths
-    if ! check_path "$DROPBOX_SCRIPT" "file"; then
-        all_ok=1
-    fi
-    
+
+    # PEGASUS_BIN is required
     if ! check_path "$PEGASUS_BIN" "file"; then
         all_ok=1
     fi
-    
-    # Check JavaScript files
+
+    # JavaScript helper (non-fatal if missing)
     if ! check_path "${JS_DIR}/starlink_get_json.js" "file"; then
         log_warn "Starlink diagnostics script not found (non-critical)"
     fi
-    
+
     if [[ $all_ok -eq 0 ]]; then
         log_info "All dependencies satisfied"
         return 0
@@ -216,7 +211,6 @@ check_dependencies() {
 
 # Save a state variable to the state file
 save_state() {
-
     local key="$1"
     local value="$2"
 
@@ -227,10 +221,10 @@ save_state() {
     fi
 
     # Create state file if it doesn't exist
-    touch "$STATE_FILE" 2>/dev/null || {
+    if ! touch "$STATE_FILE" 2>/dev/null; then
         log_warn "Cannot touch state file ${STATE_FILE} (key=${key})"
         return 0
-    }
+    fi
 
     # Remove old value if exists, then append new value
     grep -v "^${key}=" "$STATE_FILE" > "${STATE_FILE}.tmp" 2>/dev/null || true
@@ -243,22 +237,22 @@ save_state() {
     fi
 
     log_debug "State saved: ${key}=${value}"
+    return 0
 }
-
 
 # Get a state variable from the state file
 get_state() {
     local key="$1"
     local default="${2:-}"
-    
+
     if [[ -z "${STATE_FILE:-}" ]] || [[ ! -f "$STATE_FILE" ]]; then
         echo "$default"
         return 0
     fi
-    
+
     local value
     value=$(grep "^${key}=" "$STATE_FILE" 2>/dev/null | cut -d'=' -f2-)
-    
+
     if [[ -n "$value" ]]; then
         echo "$value"
     else
@@ -281,36 +275,36 @@ clear_state() {
 # Global cleanup function called on exit
 cleanup_on_exit() {
     local exit_code=$?
-    
+
     log_info "Cleanup initiated (exit code: $exit_code)"
-    
+
     # Kill any remaining Pegasus processes
     pkill -f "$PEGASUS_BIN" 2>/dev/null || true
-    
+
     # Kill any remaining node processes related to our scripts
     pkill -f "starlink_get_json.js" 2>/dev/null || true
     pkill -f "pegasus_harvest.js" 2>/dev/null || true
-    
+
     # Clean up temporary files
     cleanup_temp_files
-    
+
     log_info "Cleanup completed"
 }
 
 # Clean up temporary files
 cleanup_temp_files() {
     log_info "Cleaning up temporary files..."
-    
+
     # Remove temporary mail files
     rm -f /tmp/mail_*.txt 2>/dev/null || true
-    
+
     # Remove temporary archives (if not needed)
     rm -f /tmp/pegasus_data_*.tar.gz 2>/dev/null || true
     rm -f /tmp/camera_data_*.tar.gz 2>/dev/null || true
-    
+
     # Remove timestamp markers
     rm -f /tmp/harvest_start_* 2>/dev/null || true
-    
+
     log_debug "Temporary files cleaned"
 }
 
@@ -323,40 +317,39 @@ validate_enum() {
     local value="$1"
     shift
     local allowed_values=("$@")
-    
+
     for allowed in "${allowed_values[@]}"; do
         if [[ "$value" == "$allowed" ]]; then
             return 0
         fi
     done
-    
+
     return 1
 }
 
 # Validate that a value is a positive number
 validate_positive_number() {
     local value="$1"
-    
+
     if [[ "$value" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
         if (( $(echo "$value > 0" | bc -l) )); then
             return 0
         fi
     fi
-    
+
     return 1
 }
 
 # Validate date format YYYY-MM-DD HH:MM:SS
 validate_datetime() {
     local datetime="$1"
-    
+
     if [[ "$datetime" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}\ [0-9]{2}:[0-9]{2}:[0-9]{2}$ ]]; then
-        # Try to parse with date command
         if date -d "$datetime" &>/dev/null; then
             return 0
         fi
     fi
-    
+
     return 1
 }
 
@@ -367,7 +360,6 @@ validate_datetime() {
 # Get file size in human-readable format
 get_file_size() {
     local file="$1"
-    
     if [[ -f "$file" ]]; then
         du -h "$file" | awk '{print $1}'
     else
@@ -378,7 +370,6 @@ get_file_size() {
 # Count files in directory
 count_files() {
     local dir="$1"
-    
     if [[ -d "$dir" ]]; then
         find "$dir" -type f 2>/dev/null | wc -l
     else
@@ -389,7 +380,6 @@ count_files() {
 # Get directory size in human-readable format
 get_dir_size() {
     local dir="$1"
-    
     if [[ -d "$dir" ]]; then
         du -sh "$dir" 2>/dev/null | awk '{print $1}'
     else
@@ -402,11 +392,11 @@ prompt_yes_no() {
     local prompt="$1"
     local timeout_seconds="${2:-60}"
     local default="${3:-N}"
-    
+
     echo ""
     echo "$prompt (Y/N)"
     echo "Auto-selecting '$default' in ${timeout_seconds} seconds..."
-    
+
     if read -t "$timeout_seconds" -n 1 -p "Enter choice: " response; then
         echo ""
         case "$response" in
@@ -455,12 +445,91 @@ prompt_for_shutdown() {
     fi
 }
 
+################################################################################
+# POST-RUN CLEANUP HELPERS
+################################################################################
+
+# Delete all harvested data and log files (best-effort)
+delete_all_data_and_logs() {
+    log_info "Deleting all data and log files..."
+
+    local deleted_count=0
+    local failed_count=0
+
+    # Delete all contents of DATA_DIR
+    if [[ -d "$DATA_DIR" ]]; then
+        log_info "Removing all data in: $DATA_DIR"
+        if find "$DATA_DIR" -type f -delete 2>/dev/null; then
+            deleted_count=$((deleted_count + 1))
+            log_info "SUCCESS: Data directory cleared"
+        else
+            log_warn "Failed to delete some data files"
+            failed_count=$((failed_count + 1))
+        fi
+
+        # Also remove empty subdirectories
+        find "$DATA_DIR" -type d -empty -delete 2>/dev/null || true
+    fi
+
+    # Delete all contents of LOG_DIR
+    if [[ -d "$LOG_DIR" ]]; then
+        log_info "Removing all logs in: $LOG_DIR"
+        if find "$LOG_DIR" -type f -delete 2>/dev/null; then
+            deleted_count=$((deleted_count + 1))
+            log_info "SUCCESS: Log directory cleared"
+        else
+            log_warn "Failed to delete some log files"
+            failed_count=$((failed_count + 1))
+        fi
+
+        # Also remove empty subdirectories
+        find "$LOG_DIR" -type d -empty -delete 2>/dev/null || true
+    fi
+
+    # STATE_DIR is intentionally kept for diagnostics
+
+    log_info "Deletion summary: $deleted_count succeeded, $failed_count had issues"
+    return 0
+}
+
+# Wait for SSH connections, then power down
+wait_for_ssh_connection() {
+    local wait_hours="${1:-0}"
+
+    # Convert hours to seconds
+    local wait_seconds=$((wait_hours * 3600))
+
+    if [[ $wait_seconds -le 0 ]]; then
+        log_info "SSH wait time is 0, skipping wait"
+        return 0
+    fi
+
+    log_info "Waiting up to $wait_hours hour(s) for SSH connections..."
+    log_info "System will power down after $wait_hours hour(s) of waiting"
+
+    local elapsed=0
+    local check_interval=300  # Check every 5 minutes
+
+    while [[ $elapsed -lt $wait_seconds ]]; do
+        local remaining=$((wait_seconds - elapsed))
+        local remaining_hours=$((remaining / 3600))
+        local remaining_mins=$(((remaining % 3600) / 60))
+
+        log_info "SSH wait: $remaining_hours hour(s) $remaining_mins minute(s) remaining"
+
+        sleep "$check_interval"
+        elapsed=$((elapsed + check_interval))
+    done
+
+    log_info "SSH wait timeout reached, proceeding to poweroff"
+    return 0
+}
 
 ################################################################################
 # EXPORT FUNCTIONS
 ################################################################################
 
-# Make functions available to other scripts
+export -f init_log_file
 export -f log_message log_debug log_info log_warn log_error log_fatal
 export -f retry_with_timeout check_command check_path check_dependencies
 export -f save_state get_state clear_state
@@ -468,3 +537,5 @@ export -f cleanup_on_exit cleanup_temp_files
 export -f validate_enum validate_positive_number validate_datetime
 export -f get_file_size count_files get_dir_size
 export -f prompt_yes_no prompt_for_shutdown
+export -f delete_all_data_and_logs
+export -f wait_for_ssh_connection

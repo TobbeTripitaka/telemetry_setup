@@ -3,7 +3,7 @@
 ################################################################################
 # Post-Upload Action Library
 # Functions for executing configuration-driven actions after data upload
-# Tobias Staal 2025
+# Tobias Stål 2025
 ################################################################################
 
 # Prevent multiple sourcing
@@ -14,20 +14,19 @@ readonly _POSTACTION_LIB_LOADED=1
 # POST-ACTION CONFIGURATION VARIABLES
 ################################################################################
 
-EXECUTE="simple"   # Options: simple, remote, clean, update
-STANDBY=0          # Seconds to wait in remote mode
-
+EXECUTE="simple" # Options: simple, remote, clean, update
+STANDBY=0 # Seconds to wait in remote mode
 POSTACTION_CONFIG_DOWNLOAD_SUCCESS=0
 
 ################################################################################
 # CONFIGURATION DOWNLOAD & PARSING
 ################################################################################
 
-# Download and parse post-action configuration from Dropbox
+# Download and parse post-action configuration from remote (via rclone)
 download_and_parse_config() {
-    log_info "Downloading post-action configuration from Dropbox..."
 
-    local config_remote_path="/config.txt"
+    log_info "Downloading post-action configuration from ${RCLONE_REMOTE}:/ ..."
+    local config_remote_path="${RCLONE_REMOTE}:/config.txt"
     local config_local_path="${CONFIG_DIR}/config.txt"
     local max_attempts=3
     local attempt=1
@@ -35,7 +34,13 @@ download_and_parse_config() {
     while [[ $attempt -le $max_attempts ]]; do
         log_info "Config download attempt $attempt of $max_attempts"
 
-        if timeout 60 "$DROPBOX_SCRIPT" download "$config_remote_path" "$config_local_path" >> "$LOG_FILE" 2>&1; then
+        if timeout 60 rclone copy "$config_remote_path" "$CONFIG_DIR/" \
+            --progress \
+            --transfers 1 \
+            --checkers 1 \
+            --retries 2 \
+            --verbose 2>> "$RCLONE_LOG_PATH"; then
+
             log_info "SUCCESS: Config file downloaded"
             POSTACTION_CONFIG_DOWNLOAD_SUCCESS=1
 
@@ -46,7 +51,9 @@ download_and_parse_config() {
                 return 1
             fi
         else
-            log_warn "FAILED: Config download attempt $attempt"
+            local exit_code=$?
+            log_warn "FAILED: Config download attempt $attempt (exit code: $exit_code)"
+
             if [[ $attempt -lt $max_attempts ]]; then
                 log_info "Waiting 10 seconds before retry..."
                 sleep 10
@@ -58,11 +65,13 @@ download_and_parse_config() {
 
     log_error "Failed to download config after $max_attempts attempts"
     POSTACTION_CONFIG_DOWNLOAD_SUCCESS=0
+
     return 1
 }
 
 # Parse post-action configuration file
 parse_postaction_config() {
+
     local config_file="$1"
 
     if [[ ! -f "$config_file" ]]; then
@@ -93,6 +102,7 @@ parse_postaction_config() {
                     EXECUTE="simple"
                 fi
                 ;;
+
             STANDBY)
                 if [[ "$value" =~ ^[0-9]+$ ]]; then
                     STANDBY="$value"
@@ -102,10 +112,12 @@ parse_postaction_config() {
                     STANDBY=0
                 fi
                 ;;
+
             *)
                 log_debug "Ignoring unknown configuration parameter: $key"
                 ;;
         esac
+
     done < "$config_file"
 
     return 0
@@ -113,22 +125,28 @@ parse_postaction_config() {
 
 # Load default post-action configuration
 load_default_postaction_config() {
+
     log_info "Loading default post-action configuration..."
+
     EXECUTE="simple"
     STANDBY=0
+
     log_info "Defaults: EXECUTE=simple, STANDBY=0"
 }
 
 # Display final post-action configuration
 display_postaction_config() {
+
     log_info ""
     log_info "================================"
     log_info "Post-Action Configuration"
     log_info "================================"
     log_info "EXECUTE: $EXECUTE"
+
     if [[ "$EXECUTE" == "remote" ]]; then
         log_info "STANDBY: $STANDBY seconds"
     fi
+
     log_info "================================"
     log_info ""
 }
@@ -139,15 +157,18 @@ display_postaction_config() {
 
 # Simple action: Send email and power down (handled by main script)
 execute_simple_action() {
+
     log_info "Executing SIMPLE action: email notification and power down"
+
     # Nothing extra here – notification and shutdown are handled by tele1.sh
 }
 
 # Remote action: Enable SSH and wait for STANDBY seconds
 execute_remote_action() {
-    log_info "Executing REMOTE action: enable SSH and wait"
 
+    log_info "Executing REMOTE action: enable SSH and wait"
     log_info "Enabling SSH daemon..."
+
     if enable_ssh_daemon; then
         log_info "SSH daemon enabled successfully"
         log_info "SSH is now available for remote access"
@@ -168,9 +189,11 @@ execute_remote_action() {
 
 # Clean action: Delete old data/logs
 execute_clean_action() {
+
     log_info "Executing CLEAN action: delete old data and logs"
 
     log_info "Cleaning old harvest data (keeping only most recent)..."
+
     if clean_old_harvest_data; then
         log_info "Harvest data cleanup completed"
     else
@@ -178,6 +201,7 @@ execute_clean_action() {
     fi
 
     log_info "Cleaning old logs (keeping last 7 days)..."
+
     if clean_old_logs; then
         log_info "Logs cleanup completed"
     else
@@ -189,17 +213,19 @@ execute_clean_action() {
 
 # Update action: Placeholder
 execute_update_action() {
+
     log_info "Executing UPDATE action"
     log_warn "UPDATE not yet implemented - this is a placeholder"
     log_info "Proceeding to notification and power down"
 }
 
 ################################################################################
-# SSH MANAGEMENT (STUBS)
+# SSH MANAGEMENT
 ################################################################################
 
 # Enable SSH daemon if not already running
 enable_ssh_daemon() {
+
     log_debug "Enabling SSH daemon..."
 
     if ! command -v systemctl &>/dev/null; then
@@ -224,14 +250,20 @@ enable_ssh_daemon() {
     fi
 }
 
+# Configure SSH port (stub for future implementation)
 configure_ssh_port() {
+
     local port="$1"
     log_debug "STUB: Would configure SSH port to $port"
+
     # Future implementation
 }
 
+# Open SSH firewall (stub for future implementation)
 open_ssh_firewall() {
+
     log_debug "STUB: Would open firewall for SSH"
+
     # Future implementation
 }
 
@@ -241,6 +273,7 @@ open_ssh_firewall() {
 
 # Delete old harvest folders, keeping only most recent
 clean_old_harvest_data() {
+
     log_info "Scanning harvest data directory: $DATA_DIR"
 
     if [[ ! -d "$DATA_DIR" ]]; then
@@ -269,9 +302,11 @@ clean_old_harvest_data() {
     log_info "Most recent harvest folder: $most_recent"
 
     local deleted_count=0
+
     while IFS= read -r dir; do
         if [[ "$dir" != "$most_recent" ]]; then
             log_info "Deleting old harvest folder: $dir"
+
             if rm -rf "$dir"; then
                 ((deleted_count++))
             else
@@ -286,6 +321,7 @@ clean_old_harvest_data() {
 
 # Delete logs older than 7 days, keeping recent logs
 clean_old_logs() {
+
     log_info "Scanning logs directory: $LOG_DIR"
 
     if [[ ! -d "$LOG_DIR" ]]; then
@@ -309,6 +345,7 @@ clean_old_logs() {
     while IFS= read -r logfile; do
         if [[ -f "$logfile" ]]; then
             local file_age_days
+
             # POSIX-compatible stat
             if stat -f%m "$logfile" &>/dev/null; then
                 file_age_days=$(( ( $(date +%s) - $(stat -f%m "$logfile") ) / 86400 ))
@@ -318,6 +355,7 @@ clean_old_logs() {
 
             if [[ $file_age_days -gt $days_to_keep ]]; then
                 log_info "Deleting old log file (${file_age_days} days old): $(basename "$logfile")"
+
                 if rm -f "$logfile"; then
                     ((deleted_count++))
                 else
@@ -332,10 +370,30 @@ clean_old_logs() {
 }
 
 ################################################################################
+# INTEGRATION WITH CONFIG SYSTEM (future use)
+################################################################################
+
+# This library can be integrated into tele1.sh for post-upload actions
+# Example usage in tele1.sh:
+#
+# if [[ "$EXECUTE" == "remote" ]]; then
+#     log_info "Post-action: REMOTE mode"
+#     download_and_parse_config || load_default_postaction_config
+#     parse_and_validate_postaction_config
+#     display_postaction_config
+#     execute_remote_action
+# elif [[ "$EXECUTE" == "clean" ]]; then
+#     log_info "Post-action: CLEAN mode"
+#     execute_clean_action
+# fi
+
+################################################################################
 # EXPORT FUNCTIONS
 ################################################################################
 
-export -f download_and_parse_config parse_postaction_config load_default_postaction_config display_postaction_config
-export -f execute_simple_action execute_remote_action execute_clean_action execute_update_action
+export -f download_and_parse_config parse_postaction_config
+export -f load_default_postaction_config display_postaction_config
+export -f execute_simple_action execute_remote_action
+export -f execute_clean_action execute_update_action
 export -f enable_ssh_daemon configure_ssh_port open_ssh_firewall
 export -f clean_old_harvest_data clean_old_logs

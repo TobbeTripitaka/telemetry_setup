@@ -1,0 +1,161 @@
+################################################################################
+# TELE1 Configuration File
+# Tobias Stål 2025
+#
+# This file defines the runtime behavior of the TELE1 data collection system.
+# Place this as config/config.defaults next to tele1.sh
+#
+# All values can be overridden by environment variables or a remote config.txt
+# downloaded from Dropbox at runtime.
+################################################################################
+
+################################################################################
+# EXECUTION MODE
+################################################################################
+
+# EXECUTE: Defines the primary execution mode and post-run behavior
+#
+# Options:
+#   auto       - Run harvest, compress, upload, notify, then power down
+#   clear      - As "auto", but also delete all harvested data and logs
+#                (STATE_DIR is preserved for diagnostics)
+#   ssh        - As "auto", but wait for SSH connections before power down
+#                (useful for remote debugging and manual intervention)
+#   vnc        - Similar to ssh (placeholder for future VNC support)
+#
+# Default: auto
+# Unit: string (no units)
+#
+EXECUTE=ssh
+
+################################################################################
+# SSH / VNC WAIT TIME
+################################################################################
+
+# WAIT_TIME_SSH: How long to wait for SSH connections before powering down
+#
+# Only used when EXECUTE is "ssh" or "vnc"
+# When EXECUTE is "auto" or "clear", this value is ignored (effectively 0)
+#
+# Options:
+#   0         - Skip wait, proceed directly to power down (recommended for auto/clear)
+#   1-24      - Wait N hours for SSH connection, then power down
+#               (e.g., 1 = wait 1 hour, 24 = wait 24 hours)
+#
+# Default: 0 (for auto/clear modes; ssh/vnc users should override)
+# Unit: hours
+# Example: WAIT_TIME_SSH=1  (wait up to 1 hour for SSH)
+#
+WAIT_TIME_SSH=1
+
+################################################################################
+# HARVEST CONFIGURATION
+################################################################################
+
+# HARVEST_MODE: Which data to collect from Pegasus Harvester
+#
+# Options:
+#   all        - Harvest all available data (full history)
+#   since last - Harvest data since the last successful run
+#                (recommended for regular polling to minimize data transfer)
+#   date range - Harvest data within a specific date/time range
+#                (requires FROM_DATE and TO_DATE to be set)
+#
+# Default: since last
+# Unit: string (no units)
+#
+HARVEST_MODE="since last"
+
+################################################################################
+# DATE RANGE CONFIGURATION
+################################################################################
+
+# FROM_DATE / TO_DATE: Used only when HARVEST_MODE=date range
+#
+# Defines the time window for data harvesting when using "date range" mode
+# Ignored when HARVEST_MODE is "all" or "since last"
+#
+# Format: "YYYY-MM-DDTHH:MM:SS" (ISO string 24-hour format, UTC or local time as configured)
+#
+# Default FROM_DATE: "2026-01-01T00:00:00" (start of telemetry setup)
+# Default TO_DATE:   "2050-12-31T23:59:59" (far future; effectively "all future data")
+# Unit: ISO8601 date-time string
+#
+# Examples:
+#   FROM_DATE="2026-01-05T00:00:00"  (start of 2026)
+#   TO_DATE="2050-01-31T23:59:59"    (end of January 2026)
+#
+FROM_DATE="2025-01-06T00:00:00"
+TO_DATE="2025-12-31T23:59:59"
+
+################################################################################
+# POST-ACTION CONFIGURATION (Future Extensions)
+################################################################################
+
+# AFTER_WAIT: Behavior after VNC/SSH wait completes
+#
+# (Currently reserved for future use; always defaults to "power down")
+# When fully implemented, may allow conditional actions after wait timeout.
+#
+# Options:
+#   auto       - Power down (current behavior)
+#   manual     - Leave system running for manual interaction (future)
+#
+# Default: auto
+# Unit: string (no units)
+#
+AFTER_WAIT=auto
+
+################################################################################
+# NOTES AND RECOMMENDATIONS
+################################################################################
+
+# 1. For routine automated collection (edge device):
+#    EXECUTE=auto
+#    WAIT_TIME_SSH=0
+#    HARVEST_MODE="since last"
+#
+#    This will harvest new data, upload, notify, and power down quickly.
+#
+# 2. For debugging or remote SSH access:
+#    EXECUTE=ssh
+#    WAIT_TIME_SSH=2
+#    HARVEST_MODE="since last"
+#
+#    This will harvest, upload, notify, then wait 2 hours for SSH before power down.
+#    Useful for post-run diagnosis or manual data inspection.
+#
+# 3. For data clearing (e.g., storage maintenance):
+#    EXECUTE=clear
+#    WAIT_TIME_SSH=0
+#    HARVEST_MODE="since last"
+#
+#    This will harvest, upload, notify, delete all local data/logs, and power down.
+#    Useful for periodic storage cleanup on battery-powered systems.
+#
+# 4. For backfill or data recovery:
+#    EXECUTE=auto
+#    WAIT_TIME_SSH=0
+#    HARVEST_MODE="date range"
+#    FROM_DATE="2026-01-01 00:00:00"
+#    TO_DATE="2050-01-15 23:59:59"
+#
+#    This will harvest data from a specific date range, upload, notify, and power down.
+#
+################################################################################
+# INTERNAL DEFAULTS (Set by tele1.sh, do not edit below this line)
+################################################################################
+
+# These variables are set by tele1.sh itself and should not be modified here:
+#
+# SCRIPT_DIR, LIB_DIR, JS_DIR, CONFIG_DIR, STATE_DIR
+# DATA_DIR, LOG_DIR
+# RCLONE_REMOTE, RCLONE_LOG_PATH
+# PEGASUS_BIN
+# EMAIL_FROM, EMAIL_TO, EMAIL_PASSWORD (from credentials.txt)
+
+################################################################################
+# END OF CONFIG
+################################################################################
+
+

@@ -57,11 +57,11 @@ collect_starlink_diagnostics() {
             echo ""
         } >> "$LOG_FILE"
 
-        save_state "STARLINK_DIAGNOSTICS" "collected"
+        save_state "STARLINK_DIAGNOSTICS" "collected" 2>/dev/null || log_warn "save_state STARLINK_DIAGNOSTICS=collected failed"
         return 0
     else
         log_warn "Failed to collect Starlink diagnostics"
-        save_state "STARLINK_DIAGNOSTICS" "failed"
+        save_state "STARLINK_DIAGNOSTICS" "failed" 2>/dev/null || log_warn "save_state STARLINK_DIAGNOSTICS=failed failed"
         return 1
     fi
 }
@@ -90,6 +90,7 @@ build_status_report() {
     local data_uploaded
     data_uploaded=$(get_state "DATA_UPLOADED" "0")
 
+    # LOG_UPLOADED is now implicit in the combined archive, but keep for backward compatibility
     local log_uploaded
     log_uploaded=$(get_state "LOG_UPLOADED" "0")
 
@@ -134,19 +135,35 @@ build_status_report() {
 - Disk Space Available: $disk_space
 - Network: $(check_network_available &>/dev/null && echo 'Connected' || echo 'Disconnected')"
 
-    # Build harvest results section
+    # Build harvest results section (detailed)
     local harvest_section="Harvest Results:
-- Status: $([ "$harvest_success" == "1" ] && echo "SUCCESS after $harvest_attempts attempts" || echo "FAILED after $harvest_attempts attempts")
+- Status: $([ "$harvest_success" == "1" ] && echo \"SUCCESS after $harvest_attempts attempts\" || echo \"FAILED after $harvest_attempts attempts\")
 - Files collected: $harvest_file_count
 - Data size: $harvest_size
 - Harvest directory: $harvest_dir"
 
-    # Build upload results section
+    # Build upload results section (detailed)
     local upload_section="Upload Results:
 - Data upload: $([ "$data_uploaded" == "1" ] && echo 'SUCCESS' || echo 'FAILED')
-- Log upload: $([ "$log_uploaded" == "1" ] && echo 'SUCCESS' || echo 'FAILED')
+- Log upload: Included in data archive
 - Config download: $([ "$config_downloaded" == "1" ] && echo 'SUCCESS' || echo 'FAILED')
 - Dropbox folder: /$timestamp"
+
+    # Optional SSH access section (for EXECUTE=ssh)
+    local ssh_section=""
+    if [[ "${EXECUTE}" == "ssh" ]]; then
+        local ssh_deadline="${SSH_DEADLINE_UTC:-unknown}"
+        ssh_section=$(cat <<EOSSH
+
+SSH Access (Tailscale):
+- Mode: EXECUTE=ssh
+- SSH window (UTC): $ssh_deadline
+- How to connect (example):
+  ssh tele@<tailscale-ip-or-hostname>
+  (use the Tailscale IP/hostname shown by 'tailscale status' on your laptop)
+EOSSH
+)
+    fi
 
     # Combine all sections
     cat <<EOF
@@ -156,9 +173,10 @@ $upload_section
 
 $config_section
 
-$system_section
+$system_section$ssh_section
 EOF
 }
+
 
 ################################################################################
 # EMAIL FORMATTING
@@ -194,6 +212,28 @@ format_email_body() {
     local status="$1"
     local status_report="$2"
 
+    # Recompute a few key values for the summary header
+    local harvest_success
+    harvest_success=$(get_state "HARVEST_COMPLETED" "0")
+
+    local harvest_attempts
+    harvest_attempts=$(get_state "HARVEST_ATTEMPTS" "0")
+
+    local harvest_file_count
+    harvest_file_count=$(get_state "HARVEST_FILE_COUNT" "0")
+
+    local harvest_size
+    harvest_size=$(get_state "HARVEST_SIZE" "N/A")
+
+    local data_uploaded
+    data_uploaded=$(get_state "DATA_UPLOADED" "0")
+
+    local harvest_dir
+    harvest_dir=$(get_state "LAST_HARVEST_DIR" "N/A")
+
+    local timestamp
+    timestamp=$(get_state "HARVEST_TIMESTAMP" "N/A")
+
     local header
     case "$status" in
         COMPLETE_SUCCESS)
@@ -213,12 +253,37 @@ format_email_body() {
             ;;
     esac
 
+    local harvest_line
+    if [[ "$harvest_success" == "1" ]]; then
+        harvest_line="SUCCESS after $harvest_attempts attempts"
+    else
+        harvest_line="FAILED after $harvest_attempts attempts"
+    fi
+
+    local data_upload_line
+    if [[ "$data_uploaded" == "1" ]]; then
+        data_upload_line="SUCCESS"
+    else
+        data_upload_line="FAILED"
+    fi
+
     cat <<EOF
 $header
 
+Summary:
+- Overall status: $status
+- Harvest:        $harvest_line
+- Files:          $harvest_file_count
+- Data size:      $harvest_size
+- Harvest dir:    $harvest_dir
+- Dropbox path:   /$timestamp
+- Data upload:    $data_upload_line
+- Log upload:     Included in archive
+- Log attached:   $(basename "$LOG_FILE")
+
 $status_report
 
-Log file: $LOG_FILE
+Log file (attached): $LOG_FILE
 
 ---
 TELE1 Automated Data Collection System
@@ -283,33 +348,29 @@ send_email_with_attachment() {
 # MAIN NOTIFICATION FUNCTIONS
 ################################################################################
 
-# Send status notification (main entry point)
 send_status_notification() {
     local status="$1"
-    local log_file="$2"
+    local logfile="$2"
 
     log_info "Preparing status notification..."
 
-    # Build status report
     local status_report
     status_report=$(build_status_report "$status")
 
-    # Format email
     local subject
     subject=$(format_email_subject "$status")
 
     local body
     body=$(format_email_body "$status" "$status_report")
 
-    # Send email
-    if send_email_with_attachment "$subject" "$body" "$log_file"; then
+    # This attaches $logfile
+    if send_email_with_attachment "$subject" "$body" "$logfile"; then
         log_info "Status notification sent successfully"
-        save_state "NOTIFICATION_SENT" "1"
+        save_state "NOTIFICATION_SENT" "1" 2>/dev/null || log_warn "save_state NOTIFICATION_SENT=1 failed"
         return 0
     else
         log_error "Failed to send status notification"
-        save_state "NOTIFICATION_SENT" "0"
-        # Create local notification file as fallback
+        save_state "NOTIFICATION_SENT" "0" 2>/dev/null || log_warn "save_state NOTIFICATION_SENT=0 failed"
         create_local_notification "$status" "$status_report"
         return 1
     fi

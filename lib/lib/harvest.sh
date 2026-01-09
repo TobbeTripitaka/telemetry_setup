@@ -4,6 +4,7 @@
 # Data Harvest Library for Pegasus Automation
 ################################################################################
 
+# Prevent multiple sourcing
 [[ -n "${_HARVEST_LIB_LOADED:-}" ]] && return 0
 readonly _HARVEST_LIB_LOADED=1
 
@@ -13,8 +14,8 @@ readonly _HARVEST_LIB_LOADED=1
 
 MAX_HARVEST_ATTEMPTS=3
 HARVEST_TIMEOUT=300
-PEGASUS_STARTUP_WAIT=12
-PEGASUS_SHUTDOWN_WAIT=3
+PEGASUS_STARTUP_WAIT=6
+PEGASUS_SHUTDOWN_WAIT=2
 
 HARVEST_DIR=""
 HARVEST_FILES_COUNT=0
@@ -27,30 +28,36 @@ HARVEST_SUCCESS=0
 prepare_harvest_directory() {
     local current_time
     current_time=$(date "+%Y%m%d_%H%M")
+
     HARVEST_DIR="${DATA_DIR}/${current_time}"
     log_info "Creating harvest directory: $HARVEST_DIR"
     mkdir -p "$HARVEST_DIR"
     [[ ! -d "$HARVEST_DIR" ]] && { log_error "Failed to create harvest directory"; return 1; }
+
     TIMESTAMP_MARKER="/tmp/harvest_start_${current_time}"
     touch "$TIMESTAMP_MARKER"
-    save_state "LAST_HARVEST_DIR" "$HARVEST_DIR" 2>/dev/null || true
-    save_state "HARVEST_TIMESTAMP" "$current_time" 2>/dev/null || true
+
+    save_state "LAST_HARVEST_DIR" "$HARVEST_DIR" 2>/dev/null || log_warn "save_state LAST_HARVEST_DIR failed"
+    save_state "HARVEST_TIMESTAMP" "$current_time" 2>/dev/null || log_warn "save_state HARVEST_TIMESTAMP failed"
+
+
     return 0
 }
 
 launch_pegasus() {
     log_info "Launching Pegasus Harvester..."
-    log_info "Cleaning up any existing Pegasus processes..."
 
+    log_info "Cleaning up any existing Pegasus processes..."
     pkill -9 pegasus 2>/dev/null || true
     pkill -9 -f PegasusHarvester 2>/dev/null || true
     pkill -9 -f pegasus-harvester 2>/dev/null || true
     killall -9 pegasus-harvester 2>/dev/null || true
 
-    local port_pid=$(lsof -ti :9222 2>/dev/null)
+    local port_pid
+    port_pid=$(lsof -ti :9222 2>/dev/null)
     if [[ -n "$port_pid" ]]; then
         log_warn "Killing process holding port 9222 (PID: $port_pid)"
-        kill -9 $port_pid 2>/dev/null || true
+        kill -9 "$port_pid" 2>/dev/null || true
     fi
 
     sleep 3
@@ -60,7 +67,6 @@ launch_pegasus() {
 
     "$PEGASUS_BIN" --remote-debugging-port=9222 --remote-allow-origins=* > /dev/null 2>&1 &
     local pid=$!
-
     log_info "Pegasus Harvester started (PID: $pid)"
     log_info "Waiting ${PEGASUS_STARTUP_WAIT}s for Pegasus to initialize..."
     sleep "$PEGASUS_STARTUP_WAIT"
@@ -76,19 +82,21 @@ launch_pegasus() {
     return 0
 }
 
-
 shutdown_pegasus() {
     local pid="$1"
     log_info "Shutting down Pegasus Harvester (PID: $pid)..."
+
     if ps -p "$pid" > /dev/null 2>&1; then
         kill "$pid" 2>/dev/null || true
         sleep "$PEGASUS_SHUTDOWN_WAIT"
     fi
+
     if ps -p "$pid" > /dev/null 2>&1; then
         log_warn "Pegasus did not terminate, force killing..."
         kill -9 "$pid" 2>/dev/null || true
         sleep 1
     fi
+
     pkill -9 -f "$PEGASUS_BIN" 2>/dev/null || true
     log_info "Pegasus Harvester shutdown complete"
 }
@@ -113,7 +121,6 @@ run_single_pegasus_harvest() {
         "$HARVEST_MODE" \
         "$FROM_DATE" \
         "$TO_DATE" 2>&1 | tee -a "$LOG_FILE"
-
     local status=${PIPESTATUS[0]}
 
     if [[ $status -eq 0 ]]; then
@@ -137,10 +144,12 @@ run_harvest_with_retry() {
 
         if run_single_pegasus_harvest; then
             log_info "SUCCESS: Harvest automation completed on attempt $attempt"
+
             if verify_harvest_success; then
                 HARVEST_SUCCESS=1
-                save_state "HARVEST_COMPLETED" "1" 2>/dev/null || true
-                save_state "HARVEST_ATTEMPTS" "$attempt" 2>/dev/null || true
+                save_state "HARVEST_COMPLETED" "1" 2>/dev/null || log_warn "save_state 1 HARVEST_COMPLETED failed"
+                save_state "HARVEST_ATTEMPTS" "$attempt" 2>/dev/null || log_warn "save_state HARVEST_ATTEMPTS failed"
+
                 analyze_harvest_data
                 return 0
             else
@@ -154,21 +163,25 @@ run_harvest_with_retry() {
             log_info "Waiting 10 seconds before retry..."
             sleep 10
         fi
+
         ((attempt++))
     done
 
     log_error "Harvest failed after $MAX_HARVEST_ATTEMPTS attempts"
-    save_state "HARVEST_COMPLETED" "0" 2>/dev/null || true
-    save_state "HARVEST_ATTEMPTS" "$attempt" 2>/dev/null || true
+    save_state "HARVEST_COMPLETED" "0" 2>/dev/null || log_warn "save_state 0 HARVEST_COMPLETED failed"
+    save_state "HARVEST_ATTEMPTS" "$attempt" 2>/dev/null || log_warn "save_state HARVEST_ATTEMPTS failed"
     return 1
 }
 
 verify_harvest_success() {
     log_info "Verifying harvest success..."
+
     [[ ! -d "$HARVEST_DIR" ]] && { log_error "Harvest directory does not exist: $HARVEST_DIR"; return 1; }
+
     local file_count
     file_count=$(find "$HARVEST_DIR" -type f 2>/dev/null | wc -l)
     [[ $file_count -eq 0 ]] && { log_warn "No files found in harvest directory"; return 1; }
+
     log_info "Harvest verified: $file_count files collected"
     HARVEST_FILES_COUNT=$file_count
     return 0
@@ -178,50 +191,60 @@ analyze_harvest_data() {
     log_info ""
     log_info "Analyzing harvested data..."
     log_info "----------------------------"
+
     [[ ! -d "$HARVEST_DIR" ]] && { log_warn "Harvest directory not found for analysis"; return 1; }
+
     local total_files total_size
     total_files=$(find "$HARVEST_DIR" -type f 2>/dev/null | wc -l)
     total_size=$(du -sh "$HARVEST_DIR" 2>/dev/null | awk '{print $1}' || echo 'N/A')
+
     log_info "Total files harvested: $total_files"
     log_info "Total harvest size: $total_size"
-    if [[ $total_files -gt 0 ]]; then
-        log_info "File breakdown by extension:"
-        find "$HARVEST_DIR" -type f 2>/dev/null | sed 's/.*\.\([^.]*\)$/\1/' | sort | uniq -c | while read -r count ext; do
-            log_info "  .$ext files: $count"
-        done
-    fi
-    save_state "HARVEST_FILE_COUNT" "$total_files" 2>/dev/null || true
-    save_state "HARVEST_SIZE" "$total_size" 2>/dev/null || true
+
+
+    save_state "HARVEST_FILE_COUNT" "$total_files" 2>/dev/null || log_warn "save_state HARVEST_FILE_COUNT failed"
+    save_state "HARVEST_SIZE" "$total_size" 2>/dev/null || log_warn "save_state HARVEST_SIZE failed"
+
     log_info "----------------------------"
     log_info ""
+
+    # Critical: always return 0 so analysis is informational only
     return 0
 }
 
 compress_harvest() {
     log_info "Compressing harvest data..."
+
     [[ ! -d "$HARVEST_DIR" ]] && { log_error "Harvest directory not found: $HARVEST_DIR"; return 1; }
+
     local file_count
     file_count=$(find "$HARVEST_DIR" -type f 2>/dev/null | wc -l)
     [[ $file_count -eq 0 ]] && { log_warn "No files to compress in harvest directory"; return 1; }
+
     local archive_name="pegasus_data_$(basename "$HARVEST_DIR").tar.gz"
     local archive_path="/tmp/${archive_name}"
+
     log_info "Creating archive: $archive_path"
     log_info "Compressing $file_count files..."
+
     if tar -czf "$archive_path" -C "$(dirname "$HARVEST_DIR")" "$(basename "$HARVEST_DIR")" 2>>"$LOG_FILE"; then
         local archive_size
         archive_size=$(du -sh "$archive_path" 2>/dev/null | awk '{print $1}' || echo 'N/A')
+
         log_info "SUCCESS: Archive created ($archive_size)"
         log_info "Archive path: $archive_path"
-        save_state "HARVEST_ARCHIVE" "$archive_path" 2>/dev/null || true
-        save_state "HARVEST_ARCHIVE_SIZE" "$archive_size" 2>/dev/null || true
-        echo "$archive_path"  # ← ONLY output the path, no extra text
+
+        save_state "HARVEST_ARCHIVE" "$archive_path" 2>/dev/null || log_warn "save_state HARVEST_ARCHIVE failed"
+        save_state "HARVEST_ARCHIVE_SIZE" "$archive_size" 2>/dev/null || log_warn "save_state HARVEST_ARCHIVE_SIZE failed"
+
+        # ONLY output the path, no extra text
+        echo "$archive_path"
         return 0
     else
         log_error "Failed to create archive"
         return 1
     fi
 }
-
 
 ################################################################################
 # EXPORT FUNCTIONS

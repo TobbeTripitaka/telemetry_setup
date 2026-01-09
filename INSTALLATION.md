@@ -41,6 +41,11 @@ This guide describes the tested system: **Ubuntu 20.04 LTS** on a **Shuttle SPCE
 
 ## Hardware Requirements
 
+
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_4" width="400">
+Test setup (_photo: Tobias Stål_)
+
+
 ### Shuttle SPCEL03 Edge Computer
 
 The Shuttle SPCEL03 was selected for its RTC (real-time clock) power-on support and general spec/price considerations.
@@ -63,12 +68,19 @@ https://www.jbhifi.com.au/products/starlink-mini
 
 **Power management:** In the Starlink app, turn off the snow-melting feature to reduce power consumption.
 
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_1" width="400">
+Test setup (_photo: Tobias Stål_)
+
 **Power regulator (12V step-down for Starlink):**  
 https://campervanbuilders.com.au/products/starlink-easy-12-volt-mini-booster?variant=49807162114354
 
 ### Pelican Case Enclosure
 
 This case is big enough, in future I'll build in a smaller enclosure.
+
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_2" width="400">
+Test setup (_photo: Tobias Stål_)
+
 
 **Product page:**  
 https://www.pelican.com/ca/it/product/cases/1200?sku=1200-000-150

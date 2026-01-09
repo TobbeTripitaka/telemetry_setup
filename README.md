@@ -73,6 +73,7 @@ For issues or feedback, open a GitHub issue.
 
 Version: 0.3.0 | Updated: 9 January 2026
 
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/Mt_Brown.JPG" width="150">
-Mt Brown, East Antarctica (_Photo: Tobias Stål_)
 
+
+![Mt Brown, East Antarctica](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/Mt_Brown.JPG?raw=true)
+_photo: Tobias Stål_

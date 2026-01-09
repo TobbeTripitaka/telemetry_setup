@@ -1070,3 +1070,6 @@ If system still doesn't boot when AC power is restored:
 **End of Installation Guide**
 
 For questions or updates, contact me. 
+
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png" width="150">
+

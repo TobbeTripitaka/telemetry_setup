@@ -1,5 +1,3 @@
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png" width="150">
-
 # TELE1 – Remote Data Collection System
 
 Automated seismic data collection, Starlink diagnostics, and cloud upload for unattended field deployments.
@@ -7,6 +5,8 @@ Automated seismic data collection, Starlink diagnostics, and cloud upload for un
 TELE1 runs on Ubuntu 20.04 LTS (tested on Shuttle SPCEL03) and harvests data from Pegasus instruments via a Starlink internet connection. Data is compressed and uploaded to Dropbox with email status notifications.
 
 Designed for remote sites with minimal power and intermittent connectivity.
+
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png" width="150">
 
 ---
 
@@ -72,3 +72,7 @@ See INSTALLATION.md for:
 For issues or feedback, open a GitHub issue.
 
 Version: 0.3.0 | Updated: 9 January 2026
+
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/Mt_Brown.JPG" width="150">
+Mt Brown, East Antarctica (_Photo: Tobias Stål_)
+

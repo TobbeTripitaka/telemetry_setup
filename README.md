@@ -71,5 +71,5 @@ See INSTALLATION.md for:
 
 For issues or feedback, open a GitHub issue.
 
-Version: 0.3.0 | Updated: 9 January 2026
+Version: 0.3.1 | Updated: 16 January 2026
 

@@ -67,7 +67,7 @@ For reliable internet in remote locations without traditional infrastructure.
 **Product page:**  
 https://www.jbhifi.com.au/products/starlink-mini
 
-**Power management:** In the Starlink app, turn off the snow-melting feature to reduce power consumption.
+**Power management:** In the Starlink app, turn off the snow-melting feature to reduce power consumption. One could probably save a bit more by also turning off wifi. 
 
 <img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_1.JPG" width="500">
 
@@ -78,7 +78,7 @@ https://campervanbuilders.com.au/products/starlink-easy-12-volt-mini-booster?var
 
 ### Pelican Case Enclosure
 
-This case is big enough, in future I'll build in a smaller enclosure.
+This case is more than big enough, in future I'll build in a smaller enclosure.
 
 <img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_2.JPG" width="500">
 
@@ -88,7 +88,10 @@ Test setup. _photo: Tobias Stål_
 **Product page:**  
 https://www.pelican.com/ca/it/product/cases/1200?sku=1200-000-150
 
-The Pelican 1200 case accommodates the computer, relay, Starlink unit, and associated cabling. Starlink can be mounted inside the case (foam can be carefully modified if needed—the plastic housing is reasonably transparent to satellite signals).
+The Pelican 1200 case accommodates the computer, relay, Starlink power unit, and associated cabling. 
+
+
+The Starlink antenna can be mounted inside the teh lid of the outer case, as in photos above. The foam and inner can be modified if needed—the plastic housing is reasonably transparent to satellite signals. I'll experiment a bit more with this; teh results are good but it was a bit messy to cut the holder in the lid. 
 
 ### Solid-State Relay
 
@@ -98,7 +101,7 @@ For reliable power control and equipment switching.
 RS Components – Solid State Relay (Part 9221978)  
 https://au.rs-online.com/web/p/solid-state-relays/9221978?srsltid=AfmBOoqmeamFw7_ystevtvX469QxWLCAx3F5kNwPXLLa6v4AUEZ_Z2qg
 
-Cheaper alternatives may work equally well.
+Cheaper alternatives may work equally well but this had good specs.
 
 ### Connectors and Cabling
 
@@ -106,6 +109,9 @@ Waterproof connectors and submersible equipment:
 
 **CTALS (Australia-based supplier):**  
 https://www.ctals.com.au/collections/waterproof-submersible-products
+
+
+This will also be improved for next version. 
 
 ---
 

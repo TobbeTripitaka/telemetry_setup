@@ -6,7 +6,7 @@ TELE1 runs on Ubuntu 20.04 LTS (tested on Shuttle SPCEL03) and harvests data fro
 
 Designed for remote sites with minimal power and intermittent connectivity.
 
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png" width="150">
+<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png" width="120">
 
 ---
 
@@ -71,5 +71,5 @@ See INSTALLATION.md for:
 
 For issues or feedback, open a GitHub issue.
 
-Version: 0.3.1 | Updated: 16 January 2026
+Version: 0.3.1.1 | Updated: 16 February 2026
 

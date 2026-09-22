@@ -1,3 +1,10 @@
+**Update — September 2026**
+
+A major software update (4.0) is currently in preparation; please contact us before using the code. I expect the update to be available before 20 October 2026.
+
+The seismometer deployed in Antarctica has successfully transmitted data since February 2026. 
+
+
 # TELE1 Installation Guide
 
 **Version:** 3.0 | **Last updated:** 9 January 2026 

@@ -1,0 +1,11 @@
+# Local-only settings: /etc/tele1/node.conf, root:root, mode 0600.
+# Never include station identity, executable paths or device paths in Dropbox config.
+STATION_NAME=station01
+RCLONE_REMOTE=tele1_dropbox
+DROPBOX_ROOT=my_dropbox_path
+RECORDER_SERIAL=REPLACE_WITH_LSBLK_SERIAL
+RECORDER_DEVICE=/dev/disk/by-id/REPLACE_WITH_WHOLE_DISK_ID
+RCLONE_CONFIG=/etc/tele1/rclone.conf
+PEGASUS_BIN=/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
+VNC_SERVICE=tele1-vnc@tele.service
+VNC_PORT=5901

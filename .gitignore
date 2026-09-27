@@ -4,3 +4,12 @@
 
 # Ignore a single file in the repo root
 /credentials.txt
+/config/node.conf
+/config/credentials.txt
+*.conf.secret
+rclone.conf
+*.deb
+state/
+data/
+log/
+test-results/

@@ -1,0 +1,21 @@
+[Unit]
+Description=TELE1 field collection (powers off on exit, including failure)
+Requires=tele1-power-guard.timer
+After=local-fs.target tele1-power-guard.timer
+ConditionPathExists=/etc/tele1/FIELD_ENABLED
+
+[Service]
+Type=exec
+User=root
+UMask=0077
+Environment=TELE1_FIELD_SERVICE=1
+ExecStart=/opt/tele1/current/tele1.sh --field
+ExecStopPost=/usr/bin/systemctl --no-block poweroff
+KillMode=control-group
+TimeoutStopSec=20s
+Restart=no
+# Independent timer is primary. RuntimeMaxSec is a second bound on this service.
+RuntimeMaxSec=4h
+
+[Install]
+WantedBy=multi-user.target

@@ -1,83 +1,119 @@
-**Update — September 2026**
+# TELE1: native-CLI collection candidate
 
-A major software update (4.0) is currently in preparation; please contact us before using the code. I expect the update to be available before 20 October 2026.
+Version **4.0.0-alpha.1**, based on GitHub commit
+`be9934be982b0f6027a2f2fa072d49a3b39eb0e5`.
+This is a bench-test candidate, not a field-approved release. Do not replace a
+working remote installation until the hardware acceptance checklist passes.
 
-The seismometer deployed in Antarctica has successfully transmitted data since February 2026. 
+TELE1 copies Nanometrics Pegasus data to Dropbox on a weekly BIOS wake-up. The
+computer's USB 5 V operates the Starlink power relay; turning the computer off
+also turns Starlink off. Battery protection takes precedence over finishing
+an upload or sending an email.
 
----
+## What changed
 
-# TELE1 – Remote Data Collection System
+- **Native collection:** Bash calls the bundled native `harvester`, not the
+  Electron GUI. The project's JavaScript and Puppeteer helpers are removed.
+  Do not remove the vendor's `node_modules` directory: the native binary resides there.
+- **Integrity:** isolated daily exports, frozen Dropbox-compatible hashes,
+  post-upload verification, and progress updates only after verification.
+- **Recovery:** completed pending exports survive shutdown and are retried
+  before accessing the recorder. Failed/incomplete scratch is never uploaded.
+- **Power:** systemd powers off on collector exit, including failure; a separate
+  boot timer requests emergency shutdown after four hours, even during SSH/VNC.
+- **Remote access:** `auto`, `ssh`, and `vnc` post-run modes; 600-second idle
+  maintenance window only for `ssh`/`vnc`, reset while sessions are detected.
+- **Diagnostics:** Starlink `grpcurl` query, Dropbox logs, and a bounded email
+  attempt each completed run; best-effort notification on abnormal exit.
+- **Configuration:** literal allow-listed `key=value` data, never sourced shell.
 
-Automated seismic data collection, Starlink diagnostics, and cloud upload for unattended field deployments.
+## Dropbox layout
 
-TELE1 runs on Ubuntu 20.04 LTS (tested on Shuttle SPCEL03) and harvests data from Pegasus instruments via a Starlink internet connection. Data is compressed and uploaded to Dropbox with email status notifications.
+```text
+<dropbox_root>/tele/<station_name>/
+  config.txt
+  pegasus_harvester/
+    <native Harvester directories and filenames, unchanged>
+  tele_logfiles/
+    <run logs and diagnostics>
+    harvest/
+    receipts/<recorder_serial>/
+  <future_extension>/
+```
 
-Designed for remote sites with minimal power and intermittent connectivity.
+The script does not add a run-date folder around the native data and never
+sets `-p`. It requests `-d=24` for daily waveform files. The precise native
+SOH/log output names and cross-day behaviour must be confirmed on the recorder.
+No PSF image, recorder erasure, remote deletion, or `rclone sync` is used.
 
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png" width="120">
+## Collection modes
 
----
+| Mode | Purpose |
+|---|---|
+| `incremental` | Normal weekly operation: fill unverified days and revisit recent/open days; skip unchanged remote contents. |
+| `reconcile` | Re-export the retained recorder history; upload only missing or changed content. |
+| `reupload` | Re-export the retained history and force transfer of every file for a new request. |
+| `range` | Repair specified whole UTC days; upload missing or changed content. |
 
-## Features
+`reconcile`, `reupload`, and `range` require a `REQUEST_ID`. Reuse that ID across
+weekly wakes to resume a long request; change it to initiate another request.
+Already completed old days are skipped for the same request. A small overlap
+and any previously open day are revisited, without repeatedly forcing identical
+transfers after the request has acknowledged that day.
 
-- **Automated data harvesting** – Pegasus data logger via USB
-- **Starlink diagnostics** – Connection quality and signal metrics
-- **Cloud upload** – Compressed archives to Dropbox via rclone
-- **Email notifications** – Status reports with log attachments
-- **Remote access** – Tailscale SSH for debugging and reconfiguration
-- **Power management** – Automatic shutdown with configurable wait times
-- **Data cleanup** – Optional automatic deletion of old harvests
+Example station `config.txt`:
 
----
+```ini
+EXECUTE=ssh
+MAINTENANCE_IDLE_SECONDS=600
+HARVEST_MODE=incremental
+HARVEST_BUDGET_SECONDS=3600
+RETAIN_LAST_BATCH=yes
+```
 
-## Execution Modes
+To reconcile the whole recorder:
 
-Configure behaviour after upload via `config.txt` in Dropbox:
+```ini
+EXECUTE=auto
+HARVEST_MODE=reconcile
+REQUEST_ID=full-check-2026-09
+```
 
-| Mode | Behaviour |
-|------|-----------|
-| `auto` | Harvest, upload, notify, power down immediately |
-| `ssh` | Harvest, upload, notify, wait for SSH access, then power down |
-| `clear` | As `auto`, plus delete all local data and logs |
-| `vnc` | Reserved for future release |
+To deliberately send everything again, use `HARVEST_MODE=reupload` and a new
+request ID. A full-history request can span several weekly wakes; it does not
+override the battery deadline.
 
-For `ssh` mode, set `WAIT_TIME_SSH` (in hours) to control how long the system remains powered on.
+## Local storage and versions
 
----
+Completed but unverified exports remain in `pending/`. By default, the most
+recent verified **daily** batch remains in `last-verified/`; older verified data
+is removed locally. Set `RETAIN_LAST_BATCH=no` to disable that extra copy.
+Small daily receipts, native-path ownership records, validated configuration,
+and recent diagnostic logs remain. These are recovery metadata, not a second
+complete seismic archive.
 
-## Installation
+Deploy only a tested Git tag or exact commit, never an automatic `git pull` from
+`main` on each wake. Logs identify the application version; hardware validation
+must also record the vendor Harvester and rclone versions. The later installer
+should use versioned release directories and an atomic `current` symlink.
+State and credentials must stay outside the application checkout.
 
-Full setup instructions in `INSTALLATION.md`, covering:
+## Verification and installation status
 
-1. Ubuntu 20.04 LTS installation and timezone setup
-2. User account creation (`tele` with autologin)
-3. System package installation (rclone, Node.js, Tailscale, etc.)
-4. BIOS configuration (RTC power-on for Shuttle SPCEL03)
-5. Tailscale VPN setup for remote SSH access
-6. Project structure deployment
-7. Credentials and cloud storage configuration
-8. System verification and testing
+Run the non-hardware tests:
 
----
+```bash
+bash tests/run.sh
+shellcheck -S warning -e SC2034 tele1.sh lib/common.sh lib/config.sh \
+  lib/hardware.sh lib/harvest.sh lib/upload.sh lib/notification.sh \
+  lib/remote.sh scripts/*.sh tests/*.sh
+```
 
-## Quick Start
+SC2034 is excluded because the sourced modules deliberately share globals.
+The tests use a synthetic Harvester and real local rclone hash/copy operations.
+They never access the recorder, Dropbox, SMTP, or poweroff.
 
-### Prerequisites
-
-- Ubuntu 20.04 LTS on x86-64 hardware
-- Pegasus data logger connected via USB
-- Starlink Mini or equivalent internet
-- Dropbox account (free tier OK)
-- Gmail account (for email notifications)
-
-See INSTALLATION.md for:
-
-- Step-by-step setup
-- Verification checklist
-- Troubleshooting guide
-- All resource links
-
-For issues or feedback, open a GitHub issue.
-
-Version: 0.3.1.1 | Updated: 16 February 2026
-
+Read [the design and limitations](docs/DESIGN.md),
+[the acceptance checklist](docs/VALIDATION.md), and
+[the installation status](INSTALLATION.md) before proceeding.
+Camera remains an unused placeholder.

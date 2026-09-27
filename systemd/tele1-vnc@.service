@@ -1,0 +1,15 @@
+[Unit]
+Description=TELE1 private virtual VNC desktop for %i
+After=network.target
+
+[Service]
+Type=exec
+User=%i
+WorkingDirectory=/home/%i
+Environment=HOME=/home/%i
+UMask=0077
+# Loopback only. Connect through an SSH tunnel over Tailscale, never public VNC.
+ExecStart=/usr/bin/tigervncserver :1 -fg -localhost yes -SecurityTypes VncAuth -PasswordFile /etc/tele1/vnc/%i.passwd -xstartup /opt/tele1/current/scripts/vnc-desktop.sh
+KillMode=control-group
+TimeoutStopSec=10s
+Restart=no

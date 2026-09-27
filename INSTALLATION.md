@@ -1,32 +1,31 @@
 # TELE1 installation and field deployment guide
 
-This is the comprehensive hardware, assembly, Ubuntu, software, remote-access,
-testing and operating guide for TELE1. 
+I built TELE1 to collect seismic data from remote stations where power and
+internet access are limited. The idea is straightforward: wake the computer,
+copy data from the Pegasus recorder, upload it to Dropbox, send a status email
+and switch everything off again.
 
-**Guide updated:** 27 September 2026. **Software described:** `4.0.0-alpha.1`,
-code commit `171e2e5f68b2b3ac9dce7d1ef8ba404f13b9f2a6`.
-The original January 2026 guide described the v3 GUI/Puppeteer installation.
-That entire guide is preserved in the collapsed legacy appendix at the end.
+This guide brings together the hardware, suppliers, photographs and software
+setup I use. I've included the practical details so that another station can
+be built without having to work out the same things again.
 
-> **Read before running commands:** v4 is a bench-test candidate, not yet a
-> field-approved release. Its 43 local tests use synthetic Harvester output and
-> local rclone transfers. Real recorder completeness, live Dropbox recovery,
-> VNC, BIOS wake-up, poweroff and USB-relay behaviour still require acceptance
-> testing. Installing or starting the field systemd service can shut the
-> computer down, including after an error.
+**Updated:** 27 September 2026. The software covered here is `4.0.0-alpha.1`.
+The exact code revision used for testing is listed in the installation section.
 
-The main body is the current installation procedure and explains where the
-implementation is still provisional. The legacy appendix is historical evidence,
-not a second set of instructions to execute alongside v4.
+> **Testing is still in progress.** Please contact me before using this update
+> at an unattended field site. The automated tests pass, but the full setup
+> still needs checking with the actual recorder, Dropbox connection and computer.
+> In particular, test shutdown and the USB relay: starting the field service
+> can switch the computer off, including when something fails.
 
 <img src="img/GRIT%20_Final.png" width="150" alt="GRIT project logo">
 
-## Contents and recommended reading order
+## Contents
 
-- [Station overview and operating contract](#station-overview-and-operating-contract)
-- [Hardware selection, supplier links and photographs](#hardware-selection-supplier-links-and-photographs)
+- [About TELE1](#about-tele1)
+- [Hardware and enclosure](#hardware-and-enclosure)
 - [Assembly, cabling and power checks](#assembly-cabling-and-power-checks)
-- [Prepare a station inventory](#prepare-a-station-inventory)
+- [Station details](#station-details)
 - [Install and prepare Ubuntu](#install-and-prepare-ubuntu)
 - [Configure BIOS wake-up and shutdown behaviour](#configure-bios-wake-up-and-shutdown-behaviour)
 - [Install Ubuntu dependencies](#install-ubuntu-dependencies)
@@ -46,29 +45,28 @@ not a second set of instructions to execute alongside v4.
 - [Routine operation and data recovery](#routine-operation-and-data-recovery)
 - [Updates, rollback and station replication](#updates-rollback-and-station-replication)
 - [Troubleshooting by symptom](#troubleshooting-by-symptom)
-- [Maintenance records and future installer](#maintenance-records-and-future-installer)
-- [Migration reference for existing v3 stations](#migration-reference-for-existing-v3-stations)
-- [Original installation guide, preserved in full](#original-installation-guide-preserved-in-full)
+- [Maintenance and next steps](#maintenance-and-next-steps)
 
-For a new station, work through the sections in order on a bench with physical
-access and reliable power. For an existing field station, read the migration,
-power-protection and rollback sections before modifying anything.
+Set up and test a new station on the bench, with reliable power and physical
+access to the computer. If you are changing a station that is already deployed,
+read the shutdown and recovery sections first.
 
-## Station overview and operating contract
+## About TELE1
 
-TELE1 is an unattended seismic-data collection computer connected to a
-Nanometrics Pegasus recorder and Starlink. The recorder continues to be the
-primary local source of seismic data; the computer wakes periodically, exports
-data, uploads it to Dropbox, reports its status and powers down.
+TELE1 runs on an Ubuntu computer connected to a Nanometrics Pegasus recorder
+and Starlink. The Pegasus keeps recording while the computer is off; the
+computer only needs to be awake when collecting and transmitting data.
 
-The original system was tested on Ubuntu 20.04 LTS and a Shuttle SPCEL03, and
-the original January 2026 notes described successful operation in Australia
-with Antarctic testing planned for 2026. The repository's September 2026
-update subsequently reported that the Antarctic seismometer had transmitted
-data since February 2026. This operational history does not establish that the
-new v4 implementation has already been field-tested.
+The system has been running in Australia, and the Antarctic station has been
+transmitting data since February 2026. This software update still needs its own
+field checks, so I am keeping those separate from the experience with the
+deployed stations.
 
-### Current deployment requirements
+### How I run the station
+
+My stations wake once a week. Keeping the computer and Starlink on for longer
+than necessary wastes battery power, so shutdown is part of the job, not just
+something to do after a successful upload.
 
 - **Wake schedule:** the computer wakes once a week through the BIOS arrangement.
   Record the actual supported RTC schedule and time convention for each computer.
@@ -77,7 +75,7 @@ new v4 implementation has already been field-tested.
 - **Data volume:** planning estimate up to approximately 50 MB per day.
   Actual export, diagnostic and retransmission volumes must be measured.
 - **Recorder retention:** approximately three years of data before overwrite,
-  according to the operating setup. Treat this as an estimate, not a guarantee
+  in this setup. Treat this as an estimate, not a guarantee
   that a particular old interval remains available.
 - **Native exports:** waveform miniSEED, SOH, legacy SOH and logs; no routine
   raw PSF image.
@@ -97,7 +95,7 @@ At the planning rate, a week of new data is roughly 350 MB before additional
 overhead. A multi-year backfill is a different workload from a routine weekly
 run and may need many bounded collection cycles.
 
-### Current data and control flow
+### What happens on each run
 
 ```text
 BIOS wakes computer
@@ -116,73 +114,71 @@ BIOS wakes computer
   -> USB rail drops and Starlink relay releases
 ```
 
-This last power transition must be physically tested. A software exit message
-does not prove that the computer, USB port or Starlink has actually powered off.
+Check the last step physically. I need the USB power to disappear and the relay
+to release, not just a log message saying that the script has finished.
 
-### Software-only battery protection has a limit
+### Power limits
 
-There is no completely independent external power-cut timer in this installation,
-and adding hardware is not currently an option. The independent systemd timer
-protects against a stalled collection script while the operating system remains
-functional; it cannot guarantee power removal after a complete kernel/firmware
-freeze or a stuck shutdown.
+I use a simple relay controlled by the computer's USB power to switch Starlink.
+It works well in this setup, but there is no separate hardware timer to cut
+power if the whole computer freezes.
+
+The systemd timer is independent of the collection script and should still
+request shutdown if that script hangs. It still depends on Ubuntu working,
+so a kernel or firmware freeze remains a risk.
 
 The standard systemd runtime hardware watchdog reboots a machine when it is not
 serviced; that is not equivalent to an independent battery-saving power cutoff
 ([systemd watchdog documentation](https://manpages.debian.org/bookworm/systemd/systemd-system.conf.5.en.html)).
-Do not describe the four-hour deadline as a guaranteed physical power cut.
+The four-hour limit is therefore a shutdown-request deadline, not a guaranteed
+physical power cut.
 
-## Hardware selection, supplier links and photographs
+## Hardware and enclosure
 
-The following equipment and supplier references preserve the original
-installation notes. They document the author's tested arrangement and purchasing
-references, not current stock, prices or a requirement to buy the same products.
-Confirm present specifications, environmental ratings and suitability with the
-supplier before ordering substitutes.
+These are the parts and suppliers I used for the test setup. They are not the
+only options, and some of the hardware could be made smaller or cheaper.
+Check the specifications and availability before ordering, especially if you
+are substituting a different power supply, relay or connector.
 
 ### Complete test arrangement
 
-The original photographs show the nested enclosure arrangement, computer,
-recorder, wiring and antenna mounting experiment. Keep these as visual context;
-they are not a rated wiring diagram or proof of environmental certification.
+The photographs show how I arranged the computer, recorder, power components
+and antenna. They should help with the layout, but check the component manuals
+for wiring and electrical ratings.
 
 <img src="img/photo_4.JPG" width="720" alt="Complete TELE1 test arrangement in the outer enclosure, with antenna in the lid and recorder and electronics below">
 
-Photo: Original repository photograph:
-[photo_4.JPG](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_4.JPG).
-_photo: Tobias Stål_
-
+Test setup. Photo: Tobias Stål.
+[Full-size photograph](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_4.JPG).
 
 ### Shuttle SPCEL03 edge computer
 
-The original guide selected the Shuttle SPCEL03 for RTC power-on support and its
-overall specification/price suitability. It described an x86-64 computer with
-USB and network connections, a compact field-enclosure form factor, and a tested
-Ubuntu 20.04 LTS installation.
+I chose the Shuttle SPCEL03 because it supports RTC power-on and had a reasonable
+combination of specifications and price. It is a compact x86-64 computer with
+the USB and network connections needed for this setup.
 
-- **Original manufacturer reference:** [Shuttle SPCEL02/03 product page](https://au.shuttle.com/products/productsDetail?pn=SPCEL02/03&c=edge-pc).
+- **Product page:** [Shuttle SPCEL02/03](https://au.shuttle.com/products/productsDetail?pn=SPCEL02/03&c=edge-pc).
 - **Deployment checks:** record exact model, serial, BIOS version, installed
   storage/RAM, DC input specification and the actual wake options available.
 - **USB behaviour:** select and test a USB port whose 5 V rail powers down when
   the computer shuts down. Standby-charging settings can matter.
-- **Software compatibility:** successful operation on the historical OS is not
-  proof that the vendor Harvester package works on the new OS target.
+- **Software compatibility:** check the Nanometrics Harvester package on the
+  Ubuntu release you intend to deploy.
 
-Do not infer the wake schedule or power connector pinout from the model family
-name alone. Keep the actual computer's manual and a photograph of its relevant
-BIOS settings in the station maintenance record.
+Check the manual for the exact model, including its wake settings and power
+connector. I recommend keeping a photograph of the BIOS settings with the
+station record.
 
 ### Starlink Mini connectivity
 
-The original deployment uses Starlink Mini for internet connectivity at sites
-without conventional infrastructure. The computer and dish do not need to remain
-powered throughout the week when the station's data and remote-access policy
-allows periodic transmission.
+I use Starlink Mini for sites without a conventional internet connection.
+It only needs to be powered while the computer is uploading data or being
+accessed remotely.
 
-- **Original retail reference:** [Starlink Mini at JB Hi-Fi](https://www.jbhifi.com.au/products/starlink-mini).
-- **Original power-saving note:** turn off the snow-melting feature in the
+- **Product page:** [Starlink Mini at JB Hi-Fi](https://www.jbhifi.com.au/products/starlink-mini).
+- **Power saving:** turn off the snow-melting feature in the
   Starlink app where appropriate for the deployment.
-- **Original possible improvement:** disabling Wi-Fi may reduce consumption,
+- **Wi-Fi:** disabling it may reduce consumption,
   but only do this after confirming a working wired administration/data path.
 - **Site checks:** verify antenna visibility, obstruction behaviour, network
   route, service/account status and reconnect time after every power cycle.
@@ -193,20 +189,17 @@ network timeout and collection settings.
 
 <img src="img/photo_1.JPG" width="720" alt="TELE1 inner enclosure showing the finned computer, power components and cabling">
 
-
-[photo_1.JPG](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_1.JPG).
-_photo: Tobias Stål_
-
+Test setup. Photo: Tobias Stål.
+[Full-size photograph](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_1.JPG).
 
 ### Starlink DC power regulator
 
-The original guide linked the following power product and called it a
-“12V step-down” regulator. The linked product is named a Mini booster, so retain
-the purchasing reference but do not assume voltage-conversion direction or
-electrical suitability from that old description.
+The Starlink supply needs to suit the station's DC power system. The product
+linked below is a Mini booster; check the input and output specifications for
+the exact unit you buy.
 
-- **Original supplier reference:** [Starlink Easy 12 Volt Mini Booster](https://campervanbuilders.com.au/products/starlink-easy-12-volt-mini-booster?variant=49807162114354).
-- **Alternate supplier URL:** [Mini booster page without the historical variant query](https://campervanbuilders.com.au/products/starlink-easy-12-volt-mini-booster).
+- **Supplier:** [Starlink Easy 12 Volt Mini Booster](https://campervanbuilders.com.au/products/starlink-easy-12-volt-mini-booster?variant=49807162114354).
+- **Alternative product link:** [Mini booster](https://campervanbuilders.com.au/products/starlink-easy-12-volt-mini-booster).
 - **Before connection:** check allowable input range, required output voltage,
   connector polarity, startup current, continuous current and environmental limits
   against the exact Starlink and battery arrangement.
@@ -219,39 +212,34 @@ the equipment and deployment environment.
 
 ### Pelican case and nested enclosure
 
-The original guide used a Pelican 1200 for the computer, relay, Starlink power
-unit and associated wiring, and noted that it was more than large enough.
-The author intended to build a smaller enclosure in a later version.
+I used a Pelican 1200 for the computer, relay, Starlink power unit and wiring.
+It is more than large enough, and I would like to make the next enclosure smaller.
 
-- **Original enclosure reference:** [Pelican 1200 case](https://www.pelican.com/ca/it/product/cases/1200?sku=1200-000-150).
+- **Product page:** [Pelican 1200 case](https://www.pelican.com/ca/it/product/cases/1200?sku=1200-000-150).
 - **Alternate manufacturer page:** [Pelican 1200 Protector Case](https://www.pelican.com/ca/en/product/cases/protector/1200/).
-  Use this if the original localized URL does not open; the historical link
-  is intentionally preserved rather than discarded.
-- **Original antenna experiment:** mount the Starlink antenna inside the lid of
-  the outer case, modify the foam/inner structure to hold it, and evaluate reception.
-- **Original practical observation:** the author reported useful results through
-  the plastic housing, while noting that cutting the holder into the lid was messy
-  and deserved refinement.
-- **Qualification:** those observations are specific to the prototype; verify
-  performance with the actual enclosure, lid material, moisture/snow conditions,
-  antenna orientation and site.
+  Try this if the other link does not open.
 
-The photographs show an inner orange case within an outer grey enclosure.
-Do not assume the outer case model or environmental modifications have the same
-specification as the linked inner case.
+I mounted the Starlink antenna inside the lid of the outer case and modified
+the foam to hold it. The results through the plastic housing have been useful,
+although cutting the holder into the lid was a bit messy. There is room to
+improve this.
+
+Check reception with your own enclosure, antenna position and site conditions.
+The orange inner case and grey outer enclosure in the photographs are separate
+parts of the assembly; the product link above is for the Pelican 1200.
 
 <img src="img/photo_2.JPG" width="720" alt="Open orange TELE1 enclosure inside the larger outer case, showing computer and cable routing">
 
-Photo: Tobias Stål. Original repository photograph:
-[photo_2.JPG](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_2.JPG).
+Test setup. Photo: Tobias Stål.
+[Full-size photograph](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_2.JPG).
 
 ### Solid-state relay and USB control
 
-The original relay reference was selected for its specifications; the author
-noted that cheaper alternatives might work equally well. Any substitute must be
-checked electrically rather than chosen only by package shape or advertised current.
+I chose the relay below because its specifications suited the setup. Cheaper
+alternatives may work equally well, but check the control voltage and load
+ratings before substituting one.
 
-- **Original supplier reference:** [RS Components solid-state relay, part 9221978](https://au.rs-online.com/web/p/solid-state-relays/9221978?srsltid=AfmBOoqmeamFw7_ystevtvX469QxWLCAx3F5kNwPXLLa6v4AUEZ_Z2qg).
+- **Supplier:** [RS Components solid-state relay, part 9221978](https://au.rs-online.com/web/p/solid-state-relays/9221978?srsltid=AfmBOoqmeamFw7_ystevtvX469QxWLCAx3F5kNwPXLLa6v4AUEZ_Z2qg).
 - **Control side:** USB 5 V is the relay-control signal in this arrangement.
   It is not a proposal to supply the Starlink load directly from a USB port.
 - **Switched side:** verify DC switching suitability, load current, voltage,
@@ -259,16 +247,16 @@ checked electrically rather than chosen only by package shape or advertised curr
 - **Poweroff test:** verify relay release and Starlink shutdown after a normal
   run, an early script failure and the emergency timer.
 
-The current Bash hardware module does not implement programmable relay commands.
-The working arrangement relies on the physical presence/absence of USB power.
+There are no software relay commands in this arrangement. The relay follows
+the USB power, which is why the computer's off-state USB behaviour matters.
 
 ### Connectors, cabling and Pegasus interface
 
-The original guide recommended CTALS as an Australian supplier of waterproof
-connectors and submersible equipment. It also noted that the connector/cabling
-arrangement would be improved in a future hardware version.
+CTALS is an Australian supplier of waterproof connectors and submersible
+equipment. The connector and cable layout is another part of the build I
+would like to improve.
 
-- **Original supplier reference:** [CTALS waterproof and submersible products](https://www.ctals.com.au/collections/waterproof-submersible-products).
+- **Supplier:** [CTALS waterproof and submersible products](https://www.ctals.com.au/collections/waterproof-submersible-products).
 - **Build checks:** record connector series and pinout, use appropriate
   strain relief, protect seals and caps, and label both ends of every cable.
 - **Recorder connection:** confirm the intended Pegasus USB/data interface and
@@ -282,9 +270,9 @@ Photo: Tobias Stål.
 
 ### Photograph and drawing record
 
-All four supplied JPGs and the original GRIT logo remain in `img/`; the guide
-uses relative image paths so they render with the repository. The original logo
-is also available through its [repository image page](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png).
+The photographs and [GRIT logo](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png)
+are in the repository's `img/` directory. Keep that directory with this file
+so the images display correctly.
 
 Keep originals when adding annotated wiring diagrams or later build photographs.
 Review image metadata before publishing new site photographs, and label which
@@ -309,7 +297,7 @@ incorrect pinouts, or a relay that remains on after shutdown.
 - [ ] Recorder power remains independent where continuous recording requires it.
 - [ ] A local means of recovering from a failed configuration is available.
 
-### Power and communications acceptance
+### Power and communications tests
 
 Test computer boot first, then USB/recorder visibility, then relay operation and
 Starlink connectivity. Repeat tests with the assembled enclosure closed; record
@@ -327,10 +315,10 @@ Do not cut power to the recorder as an incidental consequence of a computer-only
 test unless that is explicitly part of the recorder's approved operating procedure.
 The goal is to save computer/Starlink power without interrupting seismic recording.
 
-## Prepare a station inventory
+## Station details
 
-Create a private deployment record before installing secrets. Keep the non-secret
-inventory with the project, and keep credentials in a separate protected store.
+Keep a short record for each station before starting the installation.
+Store passwords and tokens separately from the general hardware and setup notes.
 
 | Item | Record for this station |
 |---|---|
@@ -358,17 +346,17 @@ do not use one station's Dropbox prefix for multiple independent writers.
 
 ### Choose and record the operating system
 
-The historical tested platform is Ubuntu 20.04 LTS. The requested new target is
-the latest Ubuntu LTS; Ubuntu currently lists 26.04.1 LTS, but the Nanometrics
-package must still be validated on that release ([Ubuntu releases](https://releases.ubuntu.com/)).
+I have used Ubuntu 20.04 LTS on this hardware. For a new installation, the target
+is the latest LTS, currently 26.04.1, but check that the Nanometrics package works
+on it before committing to a field deployment ([Ubuntu releases](https://releases.ubuntu.com/)).
 
 Use the x86-64/AMD64 image appropriate to the Shuttle hardware. A server or desktop
-installation can host the collection service; v4 no longer requires graphical
+installation can host the collection service; TELE1 does not require graphical
 autologin to start harvesting.
 
-Do not combine the software migration with an untested remote OS upgrade of an
-inaccessible station. Prepare and validate a separate bench computer or service
-visit first, and keep the known working deployment recoverable.
+I would not upgrade the operating system of an inaccessible station just to
+install this software. Test on a separate computer or arrange physical access,
+and keep a way back to the working setup.
 
 On the Ubuntu station:
 
@@ -387,7 +375,7 @@ the retained batch, logs and OS operations.
 ### Time and UTC
 
 Set the system timezone to UTC and inspect synchronization. All collection-day
-boundaries and example date ranges in v4 are UTC, not Hobart local time.
+boundaries and example date ranges are UTC, not Hobart local time.
 
 ```bash
 sudo timedatectl set-timezone UTC
@@ -395,13 +383,13 @@ timedatectl status
 date -u
 ```
 
-The original reference remains [Ubuntu time configuration](https://help.ubuntu.com/community/UbuntuTime).
-Separately verify the RTC/BIOS clock convention; changing the displayed OS timezone
-does not prove the firmware wake alarm now uses the intended time.
+See [Ubuntu time configuration](https://help.ubuntu.com/community/UbuntuTime)
+for more detail. Check the BIOS clock separately, as changing Ubuntu's displayed
+timezone does not prove the wake alarm uses the time you expect.
 
 ### Linux accounts
 
-Use an existing administrative account to provision the station. The v4 collector
+Use an existing administrative account to provision the station. The collector
 is a root-owned system service, while the `tele` account is used for permitted
 remote administration and the private VNC desktop.
 
@@ -413,7 +401,7 @@ id tele
 sudo adduser --disabled-password --gecos "TELE1 Data Collection" tele
 ```
 
-The old guide also added `tele` to the `sudo` group:
+If `tele` also needs administrator access, add it to the `sudo` group:
 
 ```bash
 # Optional: only if tele is intended to be a system administrator.
@@ -426,12 +414,12 @@ blanket passwordless sudo to make installation convenient.
 
 ### Graphical autologin and desktop choices
 
-The v3 guide required graphical autologin for its desktop/GUI workflow and linked
+Graphical autologin is optional. The system service starts TELE1 without a desktop
+login, so there is no need to enable autologin for data collection.
+If you need it for another local task, see
 [Ubuntu's autologin instructions](https://help.ubuntu.com/stable/ubuntu-help/user-autologin.html.en).
-That information is preserved, but graphical autologin is not required for the
-v4 collection service and should not be enabled merely to start TELE1.
 
-The candidate VNC arrangement supplies a separate virtual Xfce desktop. It does
+The VNC setup supplies a separate virtual Xfce desktop. It does
 not require a physical GNOME login session and is not the same as mirroring the
 computer's local screen; Ubuntu 26.04's default GNOME session is Wayland-only
 ([Ubuntu desktop change](https://www.theregister.com/software/2026/04/24/ubuntu-resolute-raccoon-drops-xorg-keeps-x11-apps-alive/5225331)).
@@ -451,9 +439,9 @@ package versions so a later dependency update can be evaluated deliberately.
 
 ## Configure BIOS wake-up and shutdown behaviour
 
-The original Shuttle notes say to enter the BIOS with F2 during startup, enable
-RTC alarm wake-up/power-on and configure the ignition-key setting if required.
-Menu names and supported schedules depend on the actual firmware; consult the
+On the Shuttle, enter the BIOS with F2 during startup, enable RTC alarm wake-up
+and check the ignition-key setting if you use a physical switch.
+Menu names and supported schedules depend on the firmware; consult the
 [Shuttle product/manual reference](https://au.shuttle.com/products/productsDetail?pn=SPCEL02/03&c=edge-pc).
 
 ### Firmware items to record
@@ -469,9 +457,8 @@ Menu names and supported schedules depend on the actual firmware; consult the
   powered in the selected shutdown state.
 - **Firmware version:** record before changing settings or applying updates.
 
-The old guide's wording combined RTC wake-up and restart after AC restoration.
-Do not treat those as interchangeable: test both behaviours independently if
-both are required by the station.
+RTC wake-up and restarting after power is restored are separate functions.
+Test both if the station depends on both.
 
 ### Practical wake test
 
@@ -481,7 +468,7 @@ the actual weekly schedule.
 
 If the firmware does not expose the schedule you expect, stop and document the
 limitation. Do not assume the later installer can program an unsupported BIOS
-feature or invent a weekly schedule without verifying it on the computer.
+feature. Check that the intended weekly schedule really works on the computer.
 
 Firmware updates, if needed, belong in a controlled maintenance session with the
 manufacturer's recovery instructions and stable power. They are not a first
@@ -513,7 +500,7 @@ shellcheck --version
 command -v timeout flock lsblk findmnt ss ps sha256sum
 ```
 
-| Tool group | Use in the current setup |
+| Tool group | Purpose |
 |---|---|
 | Bash and core tools | Orchestration, time arithmetic, hashes, atomic moves, bounded commands |
 | util-linux / findutils | Locks, disk discovery and controlled file enumeration |
@@ -526,35 +513,32 @@ command -v timeout flock lsblk findmnt ss ps sha256sum
 | usbutils | Bench USB discovery through `lsusb` |
 | ShellCheck | Local static analysis before release |
 
-The original guide listed `usb-utils`; the Ubuntu package name used here is
-`usbutils`. Its Node.js, npm and Chromium dependencies belonged to the old
-Puppeteer workflow and are not TELE1 v4 runtime requirements.
+Use the Ubuntu package name `usbutils` for `lsusb`. TELE1 itself does not need
+Node.js, npm or Chromium.
 
-The original build-tool list included `build-essential`, `libssl-dev`,
-`libffi-dev` and `python3-dev`. Preserve those as historical build requirements,
-not mandatory v4 dependencies; install extra build tools only if a chosen
-vendor/package installation actually requires them.
+Build tools such as `build-essential`, `libssl-dev`, `libffi-dev` and
+`python3-dev` are only needed if a package you are installing requires them.
+There is no reason to add them all to every field computer by default.
 
 ### rclone installation alternatives
 
-The original guide used the [official rclone installer](https://rclone.org/install.sh)
-and linked the [rclone documentation](https://rclone.org/). The Ubuntu package is
-convenient for bench testing; a field release should record and use the version
-that passed acceptance.
+The [official rclone installer](https://rclone.org/install.sh) is an alternative
+to the Ubuntu package; see the [rclone documentation](https://rclone.org/).
+Whichever method you use, record the version and keep the field installation
+on a version you have tested.
 
 If you choose the official installer, download and review it before running it
 with elevated permissions rather than blindly piping an internet response into
 a root shell. Do not install or update rclone during an active collection.
 
-The old `dropbox_uploader.sh` workflow is not part of v4. Dropbox transfer and
-authorization are handled through rclone.
+Rclone handles both Dropbox authorization and file transfers. Keep its
+configuration separate from the email credentials.
 
 ## Obtain and verify Nanometrics Harvester
 
-The GitHub repository does not include the Nanometrics `.deb`, and the package's
-download/distribution method has not been supplied. Obtain an approved package
-from Nanometrics or your existing authorized distribution channel, and record
-its version, provenance and trusted checksum.
+The Nanometrics `.deb` is not included in this repository. Obtain it from
+Nanometrics or your authorized supplier, then record the package version,
+download source and trusted checksum.
 
 Do not replace a real supplier checksum with one you computed yourself and then
 call the download authenticated. A local hash is useful for recording an already
@@ -576,7 +560,7 @@ upgrade the remote OS while trying to make an unverified binary run.
 
 ### Find the native executable
 
-The previously successful native path was:
+On my test installation, the native executable is here:
 
 ```text
 /opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
@@ -596,19 +580,18 @@ HARVESTER='/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus
 "$HARVESTER" help
 ```
 
-The original `/opt/PegasusHarvester/pegasus-harvester` path referred to the GUI
-launcher used by Puppeteer. Do not substitute the GUI launcher for the native
-CLI, and do not delete the vendor's `node_modules` tree merely because TELE1's
-own JavaScript helpers were removed.
+The `/opt/PegasusHarvester/pegasus-harvester` executable is the GUI launcher,
+not the native CLI used here. Keep the vendor's `node_modules` directory:
+the native executable is installed inside it.
 
-The original CLI PDF is still needed as a vendor reference. The current adapter
-was developed from the application's pasted `help` output and observed terminal
-results, not from a newly verified copy of that PDF.
+Keep Nanometrics' CLI documentation with the station record and check it against
+the installed application's `help` output. Package versions can differ, so
+verify the interface rather than assuming every option is unchanged.
 
 ## Identify the Pegasus recorder safely
 
 Connect the recorder on the bench, then inspect all disks before selecting an
-input. Never assume a previous `/dev/sdb` designation still identifies Pegasus.
+input. Do not assume `/dev/sdb` will identify Pegasus after every reboot.
 
 ```bash
 lsusb
@@ -619,13 +602,12 @@ findmnt /
 
 ### Whole disk versus FAT partition
 
-The earlier successful test used the whole disk `/dev/sdb`, while `/dev/sdb1`
-was its exposed FAT32 partition labelled `PEGASUS`. Passing the partition to
-`volume-info` produced a misleading “Partition#0 is not FAT32” error; passing
-the parent whole disk succeeded.
+On my test computer, `/dev/sdb` was the whole recorder disk and `/dev/sdb1`
+was its FAT32 partition labelled `PEGASUS`. The native Harvester worked with
+the whole disk; using the partition produced “Partition#0 is not FAT32”.
 
 This is evidence for the tested recorder layout, not permission to hard-code
-`/dev/sdb` on another boot or computer. The current station configuration requires
+`/dev/sdb` on another boot or computer. The station configuration requires
 a whole-disk `/dev/disk/by-id/...` symlink and the expected disk serial.
 
 ### Verify the chosen stable path
@@ -643,24 +625,23 @@ and it must not be an ancestor of the system root filesystem. A shared FAT label
 or a familiar-looking UUID alone is not sufficient station identity.
 
 If the USB bridge exposes no usable serial, do not put a made-up value into
-`RECORDER_SERIAL`. The current implementation deliberately requires one; resolve
+`RECORDER_SERIAL`. The script requires one; resolve
 and test an identity strategy before approving that hardware combination.
 
 ### Mounted FAT partition
 
-The earlier terminal output showed the FAT partition already mounted at
-`/mnt/pegasus` and `/run/media/tele2/PEGASUS`. Do not add redundant mounts or write
-harvest output into a source-device mount point.
+The FAT partition may already be mounted, for example at `/mnt/pegasus` or
+under `/run/media/<username>/PEGASUS`. Check before adding another mount,
+and never put exported data into a directory on the source recorder.
 
-The current collector targets the verified whole block device. Follow vendor
+The collector targets the verified whole block device. Follow vendor
 guidance for concurrent recorder/USB access, and never run the GUI harvester and
 the native collection job against the same recorder simultaneously.
 
 ## Understand and test the native Harvester commands
 
-Use the installed binary's own help as the authority for its version. The
-following reference captures the capabilities observed in the supplied help
-and the commands relevant to this project.
+The installed binary's help is the best starting point for checking its commands.
+These are the ones useful for setting up and diagnosing TELE1.
 
 | Command | Purpose and TELE1 use |
 |---|---|
@@ -672,8 +653,8 @@ and the commands relevant to this project.
 | `harvest -i=... -o=... -l=... -u=... -safe` | Export native data, SOH and logs |
 | `show-history -i=... -safe` | Inspect recorder harvest history; not Dropbox proof |
 | `read-volume` | Advanced volume inspection; not routine station acquisition |
-| `save-library` | Compact or raw PSF copy; not enabled in routine v4 collection |
-| `telemetry` | Separate serial telemetry interface; not the current USB-disk workflow |
+| `save-library` | Compact or raw PSF copy; not used for routine collection |
+| `telemetry` | Separate serial telemetry interface; not the USB-disk workflow used here |
 
 The same executable also exposes formatting, erasure, initialization,
 library-loading and synthetic-data-generation commands. Do not run `format`,
@@ -682,7 +663,7 @@ discovery error; they can modify recorder content and are outside this workflow.
 
 ### Inspect data categories and ranges
 
-The observed volume IDs are:
+The Harvester identifies its data volumes as follows:
 
 | ID | Category |
 |---|---|
@@ -702,28 +683,28 @@ sudo "$HARVESTER" volume-info "-i=$RECORDER_DEVICE" -id=1 -safe
 sudo "$HARVESTER" volume-info "-i=$RECORDER_DEVICE" -id=2 -safe
 ```
 
-Inspect the other IDs during acceptance testing as well. The candidate uses the
+Inspect the other IDs during testing as well. The script uses the
 union of available positive time bounds instead of assuming waveform bounds
 also cover all SOH and logs; some volumes may not expose a time range.
 
-The earlier test recorder lacked clock-status volume 3. The adapter permits the
-specific observed missing-volume skip, but other errors must not be dismissed
-just because a command eventually prints “Finished”.
+My test recorder did not have clock-status volume 3. The script allows that
+specific missing-volume message, but other errors still need investigating,
+even if the command eventually prints “Finished”.
 
 ### Default output layout and daily files
 
-The supplied help shows this native output pattern:
+The native output pattern shown by `help` is:
 
 ```text
 ${Y}/${N}/${S}/${C}.D/${N}.${S}.${L}.${C}.D.${Y}.${J}
 ```
 
 The symbols refer to year, network, station, channel, location and Julian day.
-Other data types may have their own native outputs; do not invent a new directory
-hierarchy for them.
+Other data types may have their own native outputs. Keep those paths unchanged
+as well, rather than adding a separate naming scheme.
 
 TELE1 deliberately does not pass `-p`. It passes `-d=24` to request daily
-waveform files, because the supplied CLI help listed a one-hour default even
+waveform files, because the installed CLI help lists a one-hour default even
 though the native pattern contains a day number.
 
 ### Safe bench export
@@ -777,7 +758,7 @@ Export two adjacent full days separately and together, then compare file lists
 and sample coverage. Test midnight boundaries, records that straddle midnight,
 time correction, the latest partial day and missing-data intervals.
 
-The candidate rejects a native filename reused by different daily batches rather
+The script rejects a native filename reused by different daily batches rather
 than overwriting a potentially fuller earlier file. If SOH/log naming causes
 this guard to trigger, stop and resolve the output contract; do not remove the
 guard just to make an upload proceed.
@@ -788,20 +769,21 @@ if cloud testing is needed, a separate test station prefix.
 
 ### PSF images and harvest history
 
-A raw PSF image can preserve the recorder layout but may be a very large single
-file. The current requirement explicitly excludes that routine upload, and
-`save-library` is not called by the collector.
+A raw PSF image can preserve the recorder layout, but it creates a large single
+file that is awkward to upload over a limited connection. I use the Harvester's
+smaller native files for routine collection, so the script does not call
+`save-library`.
 
-Similarly, recorder harvest history is not the upload checkpoint. “Since last”
-in v4 means previously verified Dropbox coverage, not merely a GUI button or a
-record that someone read the recorder.
+Recorder harvest history is not the same as upload history. The script needs
+to know what has been verified in Dropbox, not just what has been read from
+the recorder.
 
 ## Obtain and deploy a pinned TELE1 release
 
 ### Clone on the bench machine
 
-Use the public repository URL from the original guide. Its directory is named
-`telemetry_setup`, not `tele1`, unless you explicitly choose another clone name.
+Clone the repository onto the bench machine. The commands below create a
+directory named `telemetry_setup`.
 
 ```bash
 mkdir -p "$HOME/projects"
@@ -811,7 +793,7 @@ cd telemetry_setup
 git status --short
 ```
 
-For reproducible testing of the current candidate, select its exact code commit:
+To test the software described in this guide, check out this exact commit:
 
 ```bash
 TELE1_COMMIT=171e2e5f68b2b3ac9dce7d1ef8ba404f13b9f2a6
@@ -820,9 +802,9 @@ git rev-parse HEAD
 cat VERSION
 ```
 
-That commit contains the software candidate; newer documentation-only commits
-may expand this guide without changing the runtime. Record both the tested code
-commit and the guide revision used during installation.
+Record the commit you test, along with the installed package versions.
+Documentation may be updated separately, so keep the guide revision with
+the station record as well.
 
 Do not automatically `git pull` a moving `main` branch on each weekly wake.
 Test a specific version first and deploy it deliberately.
@@ -841,8 +823,8 @@ shellcheck -S warning -e SC2034 \
 ```
 
 SC2034 is excluded for intentional shared globals between sourced modules.
-The published candidate passed 43 tests locally; real hardware acceptance is
-still a separate obligation.
+The 43 automated tests pass locally. They do not replace the checks with a
+real recorder, a live Dropbox connection and the station's power hardware.
 
 ### Intended runtime layout
 
@@ -901,7 +883,7 @@ sudo chmod 0755 "$RELEASE_DIR/tele1.sh" "$RELEASE_DIR/scripts/vnc-desktop.sh"
 ```
 
 No credentials or live data should be in the source checkout. The selected
-archive paths also avoid deploying the repository's historical runtime logs.
+archive paths also leave out the repository's stored runtime logs.
 
 For a new installation only, create the current link:
 
@@ -929,8 +911,8 @@ the identity, authentication, data and power tests have been completed.
 ## Configure Dropbox and rclone
 
 Create or select the station's Dropbox account through [Dropbox](https://www.dropbox.com).
-The original guide suggested using the station's Gmail address for the account;
-that remains an organizational choice, not a technical requirement.
+I suggest using the station's Gmail address if you want to keep its accounts
+together, although the software does not require this.
 
 Rclone uses Dropbox OAuth authorization, not a Dropbox account password in
 TELE1's email file. Its configuration contains sensitive token material and must
@@ -995,10 +977,9 @@ sudo stat -c '%a %U %G %n' /etc/tele1/rclone.conf
 sudo rclone --config /etc/tele1/rclone.conf listremotes
 ```
 
-The historical default location `~/.config/rclone/rclone.conf` remains relevant
-for interactive user installations, but v4 uses the explicit path from
-`node.conf`. Configuring a remote as your desktop user does not automatically
-configure the root-run service.
+An interactive user setup normally keeps its rclone file at
+`~/.config/rclone/rclone.conf`. TELE1 instead uses the path in `node.conf`,
+so make sure you configure the file that the root-run service will read.
 
 ### Browser authorization on the Ubuntu bench machine
 
@@ -1006,10 +987,10 @@ If the bench machine has a browser, choose the browser authorization flow.
 If rclone cannot launch a browser from sudo, open the local URL it actually prints
 in the normal user's browser on that same machine.
 
-The old guide showed a sample URL such as
-`http://127.0.0.1:53682/auth?state=xxxxxxxx`; that is only an example.
-Use the newly generated URL, complete the Dropbox authorization and return to
-the wizard ([rclone headless/browser setup](https://rclone.org/remote_setup/)).
+The URL will look something like
+`http://127.0.0.1:53682/auth?state=xxxxxxxx`. Use the actual URL printed by
+the wizard, authorize Dropbox and return to the terminal
+([rclone headless/browser setup](https://rclone.org/remote_setup/)).
 
 ### Headless authorization using a Mac
 
@@ -1037,7 +1018,7 @@ unrelated cloud credentials onto the field station
 
 ### Non-destructive connectivity check
 
-Use a separate test prefix while validating the candidate:
+Use a separate Dropbox test prefix while setting up the station:
 
 ```bash
 REMOTE_BASE='tele1_dropbox:my_dropbox_path/tele/station01-test'
@@ -1114,8 +1095,8 @@ VNC_PORT=5901
 |---|---|
 | `STATION_NAME` | Unique identifier; letters, numbers, dots, underscores and hyphens, beginning with a letter/number |
 | `RCLONE_REMOTE` | Configured remote name without its trailing colon |
-| `DROPBOX_ROOT` | Optional root prefix; current parser permits letters, numbers, underscores, dots, slashes and hyphens, not spaces |
-| `RECORDER_SERIAL` | Exact trimmed serial exposed by `lsblk`; current parser has the same identifier character restriction |
+| `DROPBOX_ROOT` | Optional root prefix; permits letters, numbers, underscores, dots, slashes and hyphens, not spaces |
+| `RECORDER_SERIAL` | Exact trimmed serial exposed by `lsblk`; uses the same identifier character restriction |
 | `RECORDER_DEVICE` | Absolute whole-disk `/dev/disk/by-id/...` link, not a partition link |
 | `RCLONE_CONFIG` | Absolute protected rclone configuration path |
 | `PEGASUS_BIN` | Absolute native executable path |
@@ -1138,15 +1119,15 @@ program or disk.
 
 ### Gmail app-password setup
 
-The current notification implementation uses Gmail's SMTP service with an app
+The notification script uses Gmail's SMTP service with an app
 password. Enable 2-Step Verification and follow Google's account-specific
 app-password instructions; managed accounts, security-key-only configurations
 and Advanced Protection can affect availability
 ([Google app-password help](https://support.google.com/accounts/answer/185833?hl=en)).
 
-The original account-management reference is [Google Account](https://myaccount.google.com).
-Create an app password for this station rather than using the account's normal
-sign-in password, and keep recovery access under the operator's control.
+Manage the account through [Google Account](https://myaccount.google.com).
+Use a separate app password for the station, not the normal account password,
+and make sure the responsible operator retains recovery access.
 
 ### Create the private email file
 
@@ -1158,7 +1139,7 @@ sudo install -o root -g root -m 0600 \
 sudoedit /etc/tele1/credentials.txt
 ```
 
-The current file accepts only these three keys:
+The file accepts these three keys:
 
 ```ini
 EMAIL_FROM=station-account@gmail.com
@@ -1166,9 +1147,9 @@ EMAIL_TO=operator@example.com
 EMAIL_PASSWORD=REPLACE_WITH_STATION_APP_PASSWORD
 ```
 
-The current candidate accepts one recipient address. Multiple-recipient syntax,
-arbitrary SMTP providers and the legacy `EMAIL_TIMEOUT` setting are not implemented
-by this parser; do not add unsupported keys and assume they will be ignored.
+The script supports one recipient address and Gmail SMTP. Multiple recipients
+and other mail providers would need changes to the notification code; extra
+configuration keys are rejected.
 
 Use full-line comments if necessary, not an inline comment after a password.
 The parser is literal data parsing: it does not expand variables, execute shell
@@ -1186,9 +1167,9 @@ sudo stat -c '%a %U %G %n' \
 Expect root ownership and mode 600 for these files. Do not print their contents
 into a shared terminal recording, log, support message or Git commit.
 
-The original guide's `source credentials.txt` and password-in-argument email
-examples are preserved only in the historical appendix. The new code keeps the
-SMTP password in a temporary private curl configuration instead of command arguments.
+The SMTP password is passed through a temporary private curl configuration,
+not placed in the command arguments. Keep shell tracing off when working with
+credentials, and do not use `source` to load a credentials file.
 
 ### Send a bench email without starting field collection
 
@@ -1226,9 +1207,9 @@ shutdown can prevent delivery even though power protection works correctly.
 - **Incident response:** revoke exposed material at the provider, replace it on
   the station through a trusted channel, and verify recovery before deployment.
 
-The planned single-input installer may split one private provisioning file into
-these runtime files. It does not exist yet, and a list of email/password pairs
-alone cannot substitute for Dropbox OAuth authorization.
+I would like the installer to take one private setup file and create the
+individual runtime files from it. That still needs the Dropbox authorization
+material as well as the email details; email/password pairs alone are not enough.
 
 ## Configure remote station settings
 
@@ -1238,7 +1219,7 @@ Each computer reads its own Dropbox configuration:
 <dropbox_root>/tele/<station_name>/config.txt
 ```
 
-The candidate validates a downloaded file before replacing its cache. If download
+The script validates a downloaded file before replacing its cache. If download
 or validation fails, it uses the last validated local copy or safe built-in
 defaults; it does not execute the file as shell code.
 
@@ -1249,9 +1230,9 @@ defaults; it does not execute the file as shell code.
 - **Quotes:** simple outer single/double quotes are accepted literally; shell
   substitutions and escapes are not evaluated.
 - **Keys:** duplicate and unknown keys are rejected, not silently accepted.
-- **Size:** the current parser limits a file to 32 KiB.
+- **Size:** the file is limited to 32 KiB.
 - **Dates:** whole UTC dates in `YYYY-MM-DD` format for range mode.
-- **Units:** all current timeout settings below are integer seconds, not hours.
+- **Units:** the timeout settings below are integer seconds, not hours.
 
 ### Supported settings
 
@@ -1313,7 +1294,7 @@ MAINTENANCE_IDLE_SECONDS=600
 
 This requests the separately provisioned private VNC service after collection
 and reporting, then uses the same idle-window logic. If VNC fails to start,
-the current code logs that failure and preserves the SSH waiting window.
+the script logs the failure and leaves the SSH waiting window open.
 
 ### Reconcile all retained data
 
@@ -1358,7 +1339,8 @@ replacement with a shorter hour-only export.
 ### Upload the configuration
 
 Prepare a file locally, check the station destination, then upload that exact
-file. This example deliberately uses the test station prefix until acceptance.
+file. This example uses a test station prefix; switch to the real station only
+after checking the setup.
 
 ```bash
 REMOTE_BASE='tele1_dropbox:my_dropbox_path/tele/station01-test'
@@ -1374,10 +1356,10 @@ collection that has already read its configuration.
 
 ## Set up Tailscale and SSH
 
-The original project uses Tailscale to reach a station behind Starlink without
-opening public inbound ports. Preserve the original [Tailscale overview link](https://tailscale.com/blog/free-plan)
-and [admin console](https://login.tailscale.com), but check the current service
-terms rather than treating an old plan description as a deployment entitlement.
+I use Tailscale to reach the station through Starlink without opening public
+inbound ports. See the [Tailscale overview](https://tailscale.com/blog/free-plan)
+and [admin console](https://login.tailscale.com), and check which service plan
+suits the number of stations and people who need access.
 
 ### Ubuntu installation and enrollment
 
@@ -1385,7 +1367,7 @@ Use Tailscale's current Ubuntu instructions or its stable package repository.
 The documented convenience installer remains available, but a reproducible field
 build should record the installed version ([Tailscale Linux installation](https://tailscale.com/docs/install/linux)).
 
-The original one-line installer was:
+Tailscale provides this installation command:
 
 ```bash
 curl -fsSL https://tailscale.com/install.sh | sh
@@ -1432,9 +1414,8 @@ sudo systemctl enable --now ssh
 sudo systemctl status ssh
 ```
 
-Do not expose SSH/VNC to the public internet or add router forwarding merely
-because a historical example displayed a public IP. Restrict access to the
-intended administrative network and test the selected authentication path.
+Keep SSH and VNC access on the intended private network. There is no need to
+open a public port or add router forwarding for this setup.
 
 ### Enrollment key expiry versus device access
 
@@ -1451,14 +1432,13 @@ will remain usable indefinitely.
 
 ### macOS administration computer
 
-The simplest current client choice is the standalone macOS app recommended by
+The simplest client choice is the standalone macOS app recommended by
 Tailscale; sign into the same intended tailnet
 ([Tailscale macOS installation](https://tailscale.com/docs/install/mac)).
 Do not run multiple conflicting Tailscale app/daemon variants on the Mac
 ([macOS variant guidance](https://tailscale.com/docs/concepts/macos-variants)).
 
-The original Homebrew CLI-only method is retained for administrators who choose
-that variant deliberately:
+If you prefer the command-line-only version, the Homebrew setup is:
 
 ```bash
 brew install --formula tailscale
@@ -1480,8 +1460,8 @@ Use the station's actual Tailscale address or approved MagicDNS hostname:
 ssh tele@station01
 ```
 
-The original guide used `tele@100.116.108.33` and `tele@tele1-node` as examples.
-They are preserved as historical examples, not assumed to identify your new node.
+Replace `station01` with the name or Tailscale address shown for your computer.
+Check the device identity before connecting, especially when managing several stations.
 
 End the session normally:
 
@@ -1489,14 +1469,14 @@ End the session normally:
 exit
 ```
 
-In `ssh`/`vnc` mode, normal shutdown is deferred while the candidate detects an
+In `ssh`/`vnc` mode, normal shutdown is deferred while the script detects an
 active session, but the emergency deadline still wins. Test interactive shells,
 file transfers, tunnels and abrupt disconnects with the installed versions.
 
 ### Retrieve protected logs
 
-V4 state/log files are normally root-owned and private. Do not change their
-permissions recursively to 777 just to make SCP work.
+The state and log files are normally root-owned and private. Export the files
+you need rather than making the entire directory readable or writable by everyone.
 
 An authorized administrator can export a selected non-secret diagnostic file
 to a temporary operator-readable location, then copy it from the Mac. For example,
@@ -1514,15 +1494,16 @@ mkdir -p "$HOME/backups"
 scp tele@station01:/home/tele/tele1-export.log "$HOME/backups/"
 ```
 
-Review/redact diagnostic material before sharing it publicly. The old
-`/home/tele/tele/log` SCP examples apply only to v3 directory layouts.
+Review diagnostic files before sharing them publicly. Remove passwords, tokens
+and any station or account information that should remain private.
 
 ## Set up the private VNC desktop
 
-The candidate keeps VNC capability through a separate virtual desktop, rather
-than assuming the old physical-screen x11vnc method will work on a current GNOME
-session. TigerVNC supports a standalone desktop, foreground operation, local-only
-listening, a password file and a custom startup script
+VNC gives me a graphical desktop when SSH is not enough. This setup uses a
+separate virtual Xfce desktop, not a mirror of the computer's physical screen.
+
+TigerVNC supports the standalone desktop, foreground operation, local-only
+listening, password file and startup script used here
 ([TigerVNC Ubuntu manual](https://manpages.ubuntu.com/manpages/noble/en/man1/tigervncserver.1.html)).
 
 ### Install and prepare the desktop
@@ -1536,7 +1517,7 @@ command -v tigervncserver tigervncpasswd dbus-run-session startxfce4
 
 Confirm package names/options on the selected Ubuntu release. The cited manual
 documents the command interface, but the exact target combination still needs
-to pass the acceptance test.
+to pass the bench tests.
 
 Create the protected VNC password location and enter a dedicated password through
 the local prompt:
@@ -1603,9 +1584,8 @@ includes poweroff. Do not confuse the two units.
 
 ## Set up Starlink diagnostics
 
-The old implementation scraped a local web page with Chromium/Puppeteer. The
-candidate instead runs a bounded `grpcurl` `get_status` request against the local
-dish service, following the observed Starlink gRPC interface
+The script collects Starlink status with a short `grpcurl` request to the dish's
+local service. This avoids running a browser just to read diagnostic information
 ([query example](https://rcastellotti.dev/posts/development-of-a-framework-for-retrieval-of-parameters-of-the-starlink-dish)).
 
 ### Install grpcurl deliberately
@@ -1627,8 +1607,8 @@ grpcurl -version
 command -v grpcurl
 ```
 
-The guide does not invent a supplier checksum or mark an untested grpcurl release
-as field-approved. Record the actual release and checksum in the station inventory.
+Record the release and checksum you install, and check that it works with the
+station before deployment. Keep that record with the other package versions.
 
 ### Query the dish on the bench
 
@@ -1639,7 +1619,7 @@ timeout --signal=TERM --kill-after=5 25 \
 ```
 
 Confirm the station can route to that local address through its actual Starlink
-network arrangement and that the output contains `dishGetStatus`. The candidate
+network arrangement and that the output contains `dishGetStatus`. The script
 treats unavailable diagnostics as nonfatal to seismic acquisition.
 
 This is a status query, not a command to reboot, stow, reset or reconfigure the
@@ -1660,9 +1640,9 @@ Read it completely before entering commands on any computer that must remain on.
 | `tele1-poweroff.service` | Issues the emergency poweroff request |
 | `tele1-vnc@tele.service` | Private virtual desktop, started only when requested or explicitly bench-tested |
 
-Both the collector and emergency timer are gated by
-`/etc/tele1/FIELD_ENABLED`. Its absence is the default while preparing the bench
-installation; it is not an emergency stop for an already-running service.
+Both the collector and emergency timer check for `/etc/tele1/FIELD_ENABLED`
+before starting. Leave this file absent while setting up the computer; removing
+it later does not stop a service or timer that is already running.
 
 ### Copy and inspect units
 
@@ -1724,11 +1704,11 @@ If the computer has already been up longer than the timer's boot deadline,
 starting that timer can cause an immediate shutdown request. Enable for a
 deliberate fresh boot rather than arming it late during a long bench session.
 
-### Remove competing legacy launch paths
+### Check for duplicate startup jobs
 
-Before field activation, inspect old launch mechanisms and disable the specific
-ones that belong to the old collector. Do not delete arbitrary cron entries or
-system services.
+Make sure only one job can start the collector. Check cron, systemd and desktop
+autostart entries, and disable any duplicate TELE1 launchers without changing
+unrelated jobs.
 
 ```bash
 sudo -u tele crontab -l
@@ -1737,19 +1717,18 @@ systemctl list-unit-files | grep -i tele
 sudo ls -la /home/tele/.config/autostart/
 ```
 
-The old desktop entry was `/home/tele/.config/autostart/tele1.desktop`, launching
-`/home/tele/tele/tele1.sh` in `gnome-terminal`. Preserve a copy outside the active
-autostart name if needed for migration, but do not leave it starting a second run.
+If `/home/tele/.config/autostart/tele1.desktop` exists, check what it starts.
+It should not launch a second collector alongside the system service.
 
-V4 no longer needs the old `tele` passwordless `/sbin/poweroff` sudoers rule
-for the root service. Review any removal separately if other approved tools
-still depend on that rule; use `visudo`, not blind text substitution.
+The root-run service does not need a passwordless poweroff rule for the `tele`
+user. If you review existing sudoers rules, use `visudo` and check whether
+another tool depends on a rule before removing it.
 
 ## Bench testing and field activation
 
 Work with physical access, stable power and a separate Dropbox station prefix.
-The complete release gate is also recorded in `docs/VALIDATION.md`; the checklist
-below keeps the installation guide self-contained.
+The checklist below covers the tests needed before deployment.
+`docs/VALIDATION.md` has further detail about the automated and hardware tests.
 
 ### Before the first poweroff-capable run
 
@@ -1801,7 +1780,7 @@ The following steps intentionally arrange for the computer to run TELE1 and
 power off after a subsequent boot. They are not part of merely checking out
 the repository, installing dependencies or viewing the code.
 
-Only on the approved bench/field station, after the acceptance checks:
+Only on the intended station, after completing the checks:
 
 ```bash
 sudo touch /etc/tele1/FIELD_ENABLED
@@ -1870,24 +1849,23 @@ this bench configuration on a battery-powered remote site.
 - **Logs:** recent run/diagnostic files and pending log snapshots.
 
 Incomplete `.partial-*` export scratch is never treated as upload-ready.
-On recovery, the candidate preserves its diagnostic log, reclaims its incomplete
+On recovery, the script keeps its diagnostic log, removes the incomplete
 payload and leaves the day unverified so it can be harvested again.
 
-“Keep the last batch” currently means one daily export, not the entire latest
-weekly run. If the operating policy needs a week or a larger rolling cache,
-that requires a deliberate retention enhancement rather than assuming the
-current yes/no option does it.
+“Keep the last batch” means one daily export, not the entire weekly run.
+Keeping a week or a larger rolling cache would need an extension to the
+retention code.
 
 ### What counts as uploaded
 
-The candidate freezes Dropbox-compatible content hashes, copies data, checks the
+The script records Dropbox-compatible content hashes, copies data, checks the
 remote against that manifest and only then writes the local acknowledgment.
 A remote filename, a local file count or successful native extraction alone is
 not enough.
 
 Dropbox hash verification proves that transferred bytes match the frozen export,
 not that the recorder's original measurements or the native export are scientifically
-valid. Real miniSEED validation belongs in the acceptance process.
+valid. Check the real miniSEED output as part of the bench testing.
 
 ### Offline runs and backlogs
 
@@ -1904,10 +1882,9 @@ If unverified payload is lost while the recorder still retains the interval,
 it can be exported again. Use a fresh `reconcile` request when complete historical
 repair is needed, and reserve `reupload` for intentional retransmission.
 
-The current candidate does not automatically reconstruct all local state from
-the remote receipt directory. Do not edit or delete state casually while a
-collector is running; use a controlled recovery session with a saved diagnostic
-record and an explicit identity/destination check.
+The script does not automatically reconstruct all local state from the remote
+receipts. If recovery is needed, stop and check the recorder identity, destination
+and available data before changing state; do not edit it during a collection.
 
 ### Recorder overwrite and historical corrections
 
@@ -1944,7 +1921,7 @@ Do not automatically install the newest branch contents, dependency release,
 vendor package or OS during weekly acquisition.
 
 Keep release directories immutable. Record the active release link, installed
-vendor/dependency versions and the acceptance evidence for each station.
+vendor/dependency versions and the test results for each station.
 
 ### Updating code
 
@@ -1974,8 +1951,8 @@ Roll back only to a known compatible code release. Preserve `/etc/tele1`,
 pending data, verified receipts and recorder identity instead of replacing the
 whole application/state tree with an old backup.
 
-A major state-format change needs a migration/rollback plan of its own.
-Do not switch v4 state into the old v3 scripts and assume they understand it.
+Check state-format compatibility before rolling back code. A rollback is only
+useful if the selected release can read the station's existing state safely.
 
 ### Replicating a station
 
@@ -2024,9 +2001,9 @@ record the actual package error rather than silently changing paths.
 Recheck whether the input is the whole recorder disk or only its FAT partition.
 Also verify that the by-id link still identifies the intended recorder.
 
-Do not follow an error message's generic suggestion to format the disk.
-The previously observed failure was fixed by using the correct whole device,
-not by erasing or reformatting the recorder.
+Do not format the disk just because the error message suggests it.
+Check the input device first; using the FAT partition instead of the whole
+recorder disk can produce this error.
 
 ### Recorder identity mismatch
 
@@ -2040,9 +2017,9 @@ before unattended operation.
 
 ### Harvest appears slow or frozen
 
-In the earlier manual run, logging completed quickly and SOH processing took
-longer while the output folder kept growing. A first progress line showing only
-one processed element is not a reliable throughput estimate.
+In my manual test, the logs finished quickly and SOH took longer, but the output
+folder kept growing. The first progress line is not a useful speed estimate
+when only one element has been processed.
 
 For a manual bench export, monitor the local test folder from another terminal:
 
@@ -2052,8 +2029,8 @@ sudo find /absolute/path/to/bench-output -type f | wc -l
 ```
 
 Do not unplug the recorder or launch a second harvester to test whether the
-first is busy. The automated candidate has a timeout and disk reserve monitor;
-inspect its preserved harvest log after a failure.
+first is busy. The automated script has a timeout and free-space check;
+inspect the harvest log if it stops.
 
 ### Harvest generated files but data seems absent
 
@@ -2061,13 +2038,12 @@ Logs and SOH can exist even when the requested waveform interval has no samples.
 Compare the requested nanosecond range with `volume-info`, inspect native
 operation status messages and validate the actual waveform files.
 
-The earlier out-of-range test returned a generated log file but no waveform
-data. That is why “one or more files exist” is not used as a sufficient
-scientific success criterion.
+An out-of-range export can still produce a log file without any waveform data.
+Check the data itself rather than relying on the number of files created.
 
 ### Native path collision
 
-The candidate intentionally stops when two different daily exports use the same
+The script stops when two different daily exports use the same
 native relative path with ambiguous contents. This may expose a SOH/log naming
 or boundary behaviour that requires a different validated export strategy.
 
@@ -2086,7 +2062,7 @@ Check the exact account, app scope, remote name, destination, provider quota
 and authorization state. Reauthorize with the intended private config file;
 do not create a second working desktop-user config and assume the service uses it.
 
-The original guide's basic `ping -c 1 8.8.8.8` and `ping -c 1 1.1.1.1` checks
+Basic `ping -c 1 8.8.8.8` and `ping -c 1 1.1.1.1` checks
 can help diagnose general connectivity, but successful ICMP does not prove
 Dropbox DNS, TLS, authentication or permissions.
 
@@ -2123,8 +2099,8 @@ Inspect protected-file permissions and the run log without printing passwords.
 Check sender/recipient addresses, the Gmail app password, account restrictions,
 network readiness and the recipient's spam/quarantine rules.
 
-Use the explicit bench notification test earlier in the guide. Do not copy the
-legacy password-in-argument commands into an automation log or a public issue.
+Use the bench email test in the email section. Keep credentials out of command
+arguments, shared logs and public support messages.
 
 ### Starlink diagnostics fail but data uploads work
 
@@ -2132,9 +2108,9 @@ Inspect routing to `192.168.100.1:9200`, grpcurl installation and the response
 format. Firmware/local API behaviour can change independently of general
 internet access.
 
-The collector should record this as a diagnostic problem rather than endlessly
-retrying a browser scraper. Do not run a dish-control command while trying to
-read status.
+The collector records this as a diagnostic problem and continues with data
+collection. Keep troubleshooting to status queries; do not reset or reconfigure
+the dish just to investigate a failed reading.
 
 ### Tailscale or SSH is unavailable
 
@@ -2185,9 +2161,9 @@ During an explicit bench test with all work saved, direct poweroff can be tested
 sudo /sbin/poweroff
 ```
 
-V4's root service does not depend on the old `tele` passwordless-shutdown sudoers
-entry. If shutdown is requested but the machine or USB rail remains powered,
-investigate firmware/hardware behaviour rather than changing only a shell trap.
+The collector runs as root, so its shutdown does not depend on the `tele`
+user's sudo permissions. If shutdown is requested but the computer or USB rail
+remains powered, check the firmware and hardware behaviour as well.
 
 ### Computer shuts down immediately when a timer is started
 
@@ -2204,26 +2180,30 @@ Review the recorded alarm settings, firmware clock, ignition-key behaviour and
 AC-restoration policy separately. Verify the last shutdown state and whether
 the station actually had the required supply available at the alarm time.
 
-The original guide suggested consulting Shuttle support with the serial/BIOS
-version and considering a firmware update. Preserve those options, but perform
-updates under a controlled bench procedure, not as an unplanned remote remedy.
+If necessary, contact Shuttle support with the model, serial number and BIOS
+version. Apply firmware updates on the bench with reliable power and a recovery
+plan, not as an unplanned change to an inaccessible station.
 
-## Maintenance records and future installer
+## Maintenance and next steps
 
 ### What to keep for every deployment
 
 Keep the wiring record, component manuals, supplier references, original and
 annotated photographs, BIOS screenshots, code/package versions, non-secret
-configuration, acceptance results and a recovery contact.
+configuration, test results and a recovery contact.
 
 Keep private credential material separately. Diagnostic bundles should identify
 the station and software version without exposing tokens, passwords or
 unnecessary account information.
 
-### Installer scope after acceptance
+### Installation script
 
-The automatic installer remains a future step after the hardware/data/power
-checks pass. It should make setup repeatable, not conceal unresolved requirements.
+Once the software has been properly tested, I want to make an installation
+script that downloads it from GitHub and handles the Ubuntu setup. Ideally,
+the only input will be a private text file containing the station settings
+and credentials.
+
+The installer will need to cover the following:
 
 - **Source:** obtain a pinned approved GitHub release with integrity checking.
 - **OS setup:** install approved dependencies and configure the required users,
@@ -2231,7 +2211,7 @@ checks pass. It should make setup repeatable, not conceal unresolved requirement
 - **Private input:** read one protected provisioning file if desired, then split
   secrets and non-secret station identity into protected runtime files.
 - **Nanometrics:** install an authorized vendor package with a known version and
-  trusted checksum; do not invent a public download or redistribution permission.
+  trusted checksum, using a download/distribution method permitted by the vendor.
 - **Cloud authorization:** import valid Dropbox OAuth configuration and enroll
   Tailscale deliberately; email passwords alone are insufficient.
 - **Validation:** check device identity, paths, hashes, service syntax and access.
@@ -2240,1158 +2220,16 @@ checks pass. It should make setup repeatable, not conceal unresolved requirement
 - **BIOS:** present the physical wake/USB-power checklist unless an actual
   supported firmware-management interface is established.
 
-The installer must not enable poweroff on an ordinary workstation, silently
-expose VNC, execute Dropbox config as shell, publish credentials, erase Pegasus,
-or run unlimited retries while consuming field battery power.
+I want setup to be easier without making it easier to switch off the wrong
+computer or lose data. Field activation should remain a separate step, with
+credentials kept private and the recorder left intact.
 
 ### Additional documentation within this repository
 
-The README provides the shorter project overview. `docs/DESIGN.md` explains the
-transaction and failure model, `docs/VALIDATION.md` provides release gates, and
-`docs/REVIEW_SUMMARY.md` records the local candidate review.
-
-This installation file intentionally remains the long, self-contained practical
-guide, including hardware sources and photographs. Future revisions should
-update or clearly label older guidance rather than deleting useful deployment
-knowledge to shorten the document.
-
-## Migration reference for existing v3 stations
-
-The old installation is not merely the new one with JavaScript removed.
-Review each difference while the station is accessible, and preserve the known
-working deployment until the replacement has passed acceptance.
-
-| Historical v3 item | Current v4 handling |
-|---|---|
-| Ubuntu 20.04 tested | Historical compatibility record preserved; new LTS requires vendor testing |
-| GUI autologin and desktop entry | Collector runs as a root system service |
-| `/home/tele/tele` combines code/data/state | Versioned `/opt` code, `/etc` settings, `/var` state/logs |
-| GUI `pegasus-harvester` launcher | Bundled native `build/Release/harvester` |
-| Node/Puppeteer and Chromium | Removed from TELE1 workflow; vendor package contents remain |
-| Starlink web-page scraping | Bounded grpcurl status request |
-| GUI “since last” button | Verified per-day Dropbox acknowledgments |
-| Per-run `.tar.gz` archives | Native daily files under each station's canonical prefix |
-| Dropbox `/config.txt` at remote root | `<root>/tele/<station>/config.txt` |
-| `WAIT_TIME_SSH` in hours | `MAINTENANCE_IDLE_SECONDS` in integer seconds |
-| `HARVEST_MODE="since last"` | `incremental` |
-| `HARVEST_MODE="all"` | Choose `reconcile` or `reupload`, with `REQUEST_ID` |
-| `HARVEST_MODE="date range"` with datetime strings | `range` with whole UTC `FROM_DATE`/`TO_DATE` |
-| `EXECUTE=clear` | Removed; delete only verified local payload under the retention policy |
-| `WAIT_TIME`, `AFTER_WAIT`, `EMAIL_TIMEOUT` | Not accepted as v4 runtime/credential settings |
-| Credentials sourced as shell | Literal allow-listed protected settings |
-| Shutdown prompt / late EXIT trap | Root service exit action plus independent boot timer |
-| x11vnc physical-screen assumptions | Private virtual TigerVNC/Xfce desktop candidate |
-| Logs attached to email / combined archive | Bounded text email summary plus separately uploaded run logs |
-
-Do not reuse a legacy configuration verbatim; unknown keys are rejected.
-Do not unpack old archives over the new canonical path without independently
-checking whether each output file is complete and belongs to the same recorder.
-
-The original supplier references, hardware observations, photographs, setup
-examples, troubleshooting notes and development intentions are preserved above
-where relevant and below in their complete historical form. Old examples in the
-appendix are not an instruction to restore unsafe or incompatible behaviour.
-
-## Original installation guide, preserved in full
-
-The following collapsed archive is the original `INSTALLATION.md` from
-commit `be9934be982b0f6027a2f2fa072d49a3b39eb0e5`.
-It is retained to ensure that no original information, photo, supplier URL,
-example or operational note disappears during the v4 documentation merge.
-
-> **Historical archive only. Do not execute as v4 instructions.** It contains
-> obsolete paths, GUI/JavaScript dependencies, old configuration names, unsafe
-> credential-display examples and earlier claims corrected in the main guide.
-> The current main-body procedures and explicit bench/field warnings take precedence.
-
-<details>
-<summary>Expand the complete original v3 installation guide (historical, not current setup instructions)</summary>
-
-<!-- ORIGINAL_GUIDE_ARCHIVE_START -->
-# TELE1 Installation Guide
-
-**Version:** 3.0 | **Last updated:** 9 January 2026
-
-This guide covers the complete setup of a TELE1 data collection node from bare Ubuntu 20.04 LTS to a field-ready (test) system.
-
-This system has been running successfully in Australia for several months and we're expanding testing to Antarctica in 2026. We'd like to share the project as it stands now and get your feedback.
-
-TELE1 automates seismic data collection, gathers Starlink diagnostics, and uploads everything to Dropbox. It's designed to run unattended in remote locations with minimal power and connectivity.
-
----
-
-## Table of Contents
-
-1. [System Overview](#system-overview)
-2. [Hardware Requirements](#hardware-requirements)
-3. [Operating System Setup](#operating-system-setup)
-4. [Package Installation](#package-installation)
-5. [Network and Remote Access (Tailscale)](#network-and-remote-access-tailscale)
-6. [Project Structure and Deployment](#project-structure-and-deployment)
-7. [Credentials and Secrets](#credentials-and-secrets)
-8. [Configuration](#configuration)
-9. [Verification and Testing](#verification-and-testing)
-10. [Troubleshooting](#troubleshooting)
-
----
-
-## System Overview
-
-TELE1 is an automated data collection and upload system designed for remote, unattended field deployments, primarily to harvest data from seismic recorders. It:
-
-- Collects seismic data via Pegasus Harvester
-- Gathers Starlink diagnostics
-- Uploads compressed archives to Dropbox via rclone
-- Sends status notifications via email
-- Automatically powers down when complete
-
-This guide describes the tested system: **Ubuntu 20.04 LTS** on a **Shuttle SPCEL03** edge computer with **Starlink Mini** internet connectivity.
-
----
-
-## Hardware Requirements
-
-
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_4.JPG" width="500">
-
-Test setup. _photo: Tobias Stål_
-
-
-### Shuttle SPCEL03 Edge Computer
-
-The Shuttle SPCEL03 was selected for its RTC (real-time clock) power-on support and general spec/price considerations.
-
-**Product page:**
-https://au.shuttle.com/products/productsDetail?pn=SPCEL02/03&c=edge-pc
-
-**Key features:**
-- x86-64 processor (supports Ubuntu 20.04 LTS)
-- RTC wake-on-alarm capability
-- Multiple USB and network ports
-- Compact form factor suitable for field enclosures
-
-### Starlink Mini Connectivity
-
-For reliable internet in remote locations without traditional infrastructure.
-
-**Product page:**
-https://www.jbhifi.com.au/products/starlink-mini
-
-**Power management:** In the Starlink app, turn off the snow-melting feature to reduce power consumption. One could probably save a bit more by also turning off wifi.
-
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_1.JPG" width="500">
-
-Test setup. _photo: Tobias Stål_
-
-**Power regulator (12V step-down for Starlink):**
-https://campervanbuilders.com.au/products/starlink-easy-12-volt-mini-booster?variant=49807162114354
-
-### Pelican Case Enclosure
-
-This case is more than big enough, in future I'll build in a smaller enclosure.
-
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_2.JPG" width="500">
-
-Test setup. _photo: Tobias Stål_
-
-
-**Product page:**
-https://www.pelican.com/ca/it/product/cases/1200?sku=1200-000-150
-
-The Pelican 1200 case accommodates the computer, relay, Starlink power unit, and associated cabling.
-
-
-The Starlink antenna can be mounted inside the teh lid of the outer case, as in photos above. The foam and inner can be modified if needed—the plastic housing is reasonably transparent to satellite signals. I'll experiment a bit more with this; teh results are good but it was a bit messy to cut the holder in the lid.
-
-### Solid-State Relay
-
-For reliable power control and equipment switching.
-
-**Recommended model:**
-RS Components – Solid State Relay (Part 9221978)
-https://au.rs-online.com/web/p/solid-state-relays/9221978?srsltid=AfmBOoqmeamFw7_ystevtvX469QxWLCAx3F5kNwPXLLa6v4AUEZ_Z2qg
-
-Cheaper alternatives may work equally well but this had good specs.
-
-### Connectors and Cabling
-
-Waterproof connectors and submersible equipment:
-
-**CTALS (Australia-based supplier):**
-https://www.ctals.com.au/collections/waterproof-submersible-products
-
-
-This will also be improved for next version.
-
----
-
-## Operating System Setup
-
-### Initial Installation
-
-1. **Install Ubuntu 20.04 LTS** on the Shuttle SPCEL03.
-   - Use the 64-bit server or desktop edition
-   - Default partitioning is acceptable
-   - Ensure internet connectivity during installation
-
-2. **Configure Time (UTC)**
-
-   Set the system clock to UTC for consistency with seismometer timestamps:
-
-   ```bash
-   timedatectl set-timezone UTC
-   timedatectl status
-   ```
-
-   For detailed time configuration options, see:
-   https://help.ubuntu.com/community/UbuntuTime
-
-3. **Create User Account**
-
-   Create the `tele` user with sudo privileges:
-
-   ```bash
-   sudo adduser --disabled-password --gecos "TELE1 Data Collection" tele
-   sudo usermod -aG sudo tele
-   ```
-
-4. **Enable Graphical Autologin**
-
-   Enable automatic login for the `tele` user so the system boots directly into a session (no password prompt):
-
-   https://help.ubuntu.com/stable/ubuntu-help/user-autologin.html.en
-
-   This is essential for unattended field deployments.
-
-5. **Configure Passwordless Shutdown**
-
-   Allow the `tele` user to power off without entering a sudo password (required for automated shutdown):
-
-   ```bash
-   sudo visudo
-   ```
-
-   Add this line at the end of the file:
-
-   ```
-   tele ALL=(ALL) NOPASSWD: /sbin/poweroff, /usr/sbin/poweroff
-   ```
-
-   Save and exit (`Ctrl+X`, then `Y`, then `Enter` in nano).
-
-### BIOS Configuration (Shuttle SPCEL03)
-
-1. Restart the system and enter BIOS by pressing **F2** during boot.
-
-2. Enable **RTC (Real-Time Clock) Power-On:**
-   - Navigate to Power Management or similar section
-   - Enable "RTC Alarm Wake-up" or "Power-on by RTC"
-
-3. Set **Ignition Key** for phyisical power switch if required.
-
-4. Save and exit BIOS.
-
-These settings ensure the node can power up automatically when mains power is restored after a shutdown or power loss—critical for field operations.
-
----
-
-## Package Installation
-
-### System Package Updates
-
-First, update the package manager cache:
-
-```bash
-sudo apt update
-sudo apt upgrade -y
-```
-
-### Install Core Dependencies
-
-Install all required system packages in one command:
-
-```bash
-sudo apt install -y \
-  bash curl jq git nodejs npm chromium-browser \
-  openssh-server openssh-client systemd build-essential \
-  libssl-dev libffi-dev python3-dev usb-utils
-```
-
-**Purpose of each package:**
-
-- `bash`, `curl`: Core utilities and HTTP client
-- `jq`: JSON command-line processor (for parsing Starlink diagnostics)
-- `git`: Version control (to clone TELE1 repository)
-- `nodejs`, `npm`: Node.js runtime and package manager (for data collection scripts)
-- `chromium-browser`: Required by Puppeteer for Starlink diagnostics
-- `openssh-server`, `openssh-client`: SSH for remote access
-- `systemd`: Already present; included for completeness
-- `build-essential`, `libssl-dev`, `libffi-dev`, `python3-dev`: Build tools (for compiling dependencies)
-- `usb-utils`: USB device utilities (for hardware detection)
-
-### Install Pegasus Harvester
-
-The Pegasus Harvester binary must be installed at `/opt/PegasusHarvester/pegasus-harvester` and be executable.
-
-Obtain the binary from Nanometrics and:
-
-```bash
-sudo mkdir -p /opt/PegasusHarvester
-sudo cp pegasus-harvester /opt/PegasusHarvester/pegasus-harvester
-sudo chmod +x /opt/PegasusHarvester/pegasus-harvester
-```
-
-Verify installation:
-
-```bash
-/opt/PegasusHarvester/pegasus-harvester --version
-```
-
-### Install rclone (Dropbox Upload)
-
-rclone is the modern cloud synchronisation tool that replaces the legacy `dropbox_uploader.sh`. It handles all uploads to Dropbox via a secure OAuth2 connection.
-
-**Official documentation:**
-https://rclone.org/dropbox/
-
-#### Install rclone
-
-Install from the official script:
-
-```bash
-curl https://rclone.org/install.sh | sudo bash
-```
-
-Verify installation:
-
-```bash
-rclone version
-```
-
-Expected output: `rclone v1.xx.x` (or newer)
-
----
-
-#### Configure rclone with Dropbox
-
-rclone requires OAuth2 authentication with Dropbox. There are **two methods** depending on whether your TELE1 node has a graphical web browser available. The broswer setup is described here:
-
-##### Direct Browser Authentication (Desktop/Lab Setup)
-
-If you're configuring the node on a machine with a graphical desktop and web browser (e.g., during initial lab setup before field deployment):
-
-1. **Start the configuration wizard:**
-
-   ```bash
-   rclone config
-   ```
-
-2. **Create a new remote:**
-
-   ```
-   e/n/d/r/c/s/q> n
-   ```
-
-3. **Name the remote:**
-
-   ```
-   name> tele1_dropbox
-   ```
-
-   **Important:** The name `tele1_dropbox` must match the `RCLONE_REMOTE` variable in `tele1.sh`.
-
-4. **Choose Dropbox as the storage type:**
-
-   ```
-   Storage> dropbox
-   ```
-
-   (Type `dropbox` or select the number corresponding to Dropbox from the list, usually around option 13-14)
-
-5. **Leave OAuth Client ID and Secret blank:**
-
-   ```
-   client_id> [press Enter]
-   client_secret> [press Enter]
-   ```
-
-6. **Skip advanced configuration:**
-
-   ```
-   Edit advanced config? (y/n)
-   y/n> n
-   ```
-
-7. **Use auto config (browser authentication):**
-
-   ```
-   Use web browser to automatically authenticate rclone with remote?
-   * Say Y if the machine running rclone has a web browser you can use
-   * Say N if running rclone on a (remote) machine without web browser access
-
-   y/n> y
-   ```
-
-8. **Authorise in browser:**
-
-   rclone will automatically open your default web browser and navigate to Dropbox's authorisation page. If the browser doesn't open automatically, copy the URL shown in the terminal (e.g., `http://127.0.0.1:53682/auth?state=xxxxxxxx`) and paste it into your browser.
-
-   - Log in to your Dropbox account
-   - Click **Allow** to grant rclone access to your Dropbox
-
-9. **Confirm the configuration:**
-
-   After authorisation, rclone will display your Dropbox account information. Confirm:
-
-   ```
-   y) Yes this is OK (default)
-   e) Edit this remote
-   d) Delete this remote
-   y/e/d> y
-   ```
-
-10. **Exit the wizard:**
-
-    ```
-    e/n/d/r/c/s/q> q
-    ```
-
-
----
-
-#### Verify rclone Configuration
-
-After configuration (via either method), verify that rclone can communicate with Dropbox:
-
-1. **List configured remotes:**
-
-   ```bash
-   rclone listremotes
-   ```
-
-   **Expected output:**
-
-   ```
-   tele1_dropbox:
-   ```
-
-2. **Test the connection by listing files in your Dropbox root:**
-
-   ```bash
-   rclone ls tele1_dropbox:/
-   ```
-
-   If your Dropbox is empty, this will return nothing. If you have files, they'll be listed.
-
-3. **Test upload with a dummy file:**
-
-   ```bash
-   echo "TELE1 rclone test" > /tmp/rclone_test.txt
-   rclone copy /tmp/rclone_test.txt tele1_dropbox:/
-   ```
-
-4. **Verify the file was uploaded:**
-
-   ```bash
-   rclone ls tele1_dropbox:/
-   ```
-
-   You should see `rclone_test.txt` listed.
-
-5. **Clean up test file:**
-
-   ```bash
-   rclone delete tele1_dropbox:/rclone_test.txt
-   rm /tmp/rclone_test.txt
-   ```
-
-If all tests pass, rclone is correctly configured and ready for TELE1 operations.
-
-**Note:** The rclone configuration is stored in `~/.config/rclone/rclone.conf`. This file contains your Dropbox OAuth token and should be kept secure (mode `0600` is automatically set by rclone).
-
-
----
-
-## Network and Remote Access (Tailscale)
-
-Remote access is essential for monitoring, debugging, and reconfiguring nodes in the field. TELE1 uses **Tailscale**, a zero-configuration VPN that handles NAT traversal and provides secure point-to-point connectivity without port forwarding.
-
-**Overview:**
-https://tailscale.com/blog/free-plan
-
-### Install Tailscale on the TELE1 Node (Ubuntu/Starlink)
-
-1. Install Tailscale using the official script:
-
-   ```bash
-   curl -fsSL https://tailscale.com/install.sh | sh
-   ```
-
-2. Bring the node online and enable Tailscale SSH:
-
-   ```bash
-   sudo tailscale up --ssh --authkey "tskey-xxxxxxxxxxxxxxxx"
-   ```
-
-   Replace `tskey-xxxxxxxxxxxxxxxx` with an auth key generated in the [Tailscale Admin Console](https://login.tailscale.com).
-
-   This command:
-   - Starts the Tailscale daemon
-   - Joins the node to your tailnet using the auth key
-   - Enables SSH access over Tailscale
-
-3. Verify connectivity:
-
-   ```bash
-   sudo tailscale status
-   ```
-
-   Output will show your node's Tailscale IP (e.g., `100.116.108.33`).
-
-### Install Tailscale on Admin Machine (macOS)
-
-From your administration machine (e.g., your Mac), install Tailscale to access the remote node:
-
-1. Install Tailscale via Homebrew:
-
-   ```bash
-   brew install --formula tailscale
-   ```
-
-2. Start the Tailscale daemon:
-
-   ```bash
-   sudo brew services start tailscale
-   sudo tailscale up
-   ```
-
-   Follow the login prompt to join your tailnet.
-
-3. Check connected nodes:
-
-   ```bash
-   tailscale status
-   ```
-
-### SSH Access to TELE1 Node
-
-Once both machines are in the same tailnet (e.g.):
-
-```bash
-ssh tele@100.116.108.33
-```
-
-Or use the node hostname if available:
-
-```bash
-ssh tele@tele1-node
-```
-
-### Copy Files from Remote Node
-
-Download logs or data from the field node:
-
-```bash
-scp -r tele@100.116.108.33:/home/tele/tele/log ~/backups/tele1_logs_$(date +%Y%m%d)
-```
-
-### End SSH Session
-
-```bash
-exit
-```
-
----
-
-## Project Structure and Deployment
-
-### Directory Layout
-
-TELE1 uses a specific directory structure. Create it now:
-
-```bash
-sudo -u tele mkdir -p /home/tele/tele/{lib,js,log/computer,data/pegasus,config,state}
-```
-
-The final layout:
-
-```
-/home/tele/tele/
-├── tele1.sh                    # Main orchestration script
-├── credentials.txt             # Email and storage credentials (NOT in git)
-├── lib/
-│   ├── common.sh               # Shared utilities (logging, retry, cleanup)
-│   ├── hardware.sh             # Hardware checks and system info
-│   ├── config.sh               # Configuration loading and validation
-│   ├── harvest.sh              # Pegasus data collection
-│   ├── upload.sh               # rclone-based upload to Dropbox
-│   ├── notification.sh         # Email notifications
-│   ├── camera.sh               # Camera capture (if equipped)
-│   └── remote.sh               # SSH/VNC remote access modes
-├── js/
-│   ├── pegasus_harvest.js      # Pegasus automation helper
-│   └── starlink_get_json.js    # Starlink diagnostics collection
-├── log/                        # Execution logs
-├── data/
-│   └── pegasus/                # Harvested data
-├── config/                     # Local config cache
-└── state/                      # State tracking (.last_run_state)
-```
-
-### Obtain TELE1 Source Code
-
-#### Option A: Clone from Git Repository (Preferred)
-
-Clone the TELE1 repository to your workstation first, then deploy to the node:
-
-```bash
-cd ~/projects  # or wherever you keep code
-git clone https://github.com/TobbeTripitaka/telemetry_setup.git
-cd tele1
-```
-
-#### Option B: Manual Directory Setup
-
-If not using git, create all scripts manually in `/home/tele/tele/lib` and `/home/tele/tele/js`.
-
-### Deploy Scripts to TELE1 Node
-
-Ensure all scripts are owned by the `tele` user and are executable.
-
-**From your repository root:**
-
-```bash
-# Copy main script
-cp tele1.sh /home/tele/tele/tele1.sh
-chmod 755 /home/tele/tele/tele1.sh
-chown tele:tele /home/tele/tele/tele1.sh
-
-# Copy library scripts
-cp lib/*.sh /home/tele/tele/lib/
-chmod 755 /home/tele/tele/lib/*.sh
-chown tele:tele /home/tele/tele/lib/*.sh
-
-# Copy JavaScript helpers
-cp js/*.js /home/tele/tele/js/
-chown tele:tele /home/tele/tele/js/*.js
-```
-
-### Verify Script Syntax
-
-Check for shell syntax errors:
-
-```bash
-bash -n /home/tele/tele/tele1.sh
-bash -n /home/tele/tele/lib/common.sh
-# ... check each lib/*.sh file
-```
-
----
-
-## Credentials and Secrets
-
-### Overview
-
-All credentials (email passwords, Dropbox tokens) are stored in `/home/tele/tele/credentials.txt`. This file is:
-
-- Read by `tele1.sh` at startup
-- NOT included in version control
-- Restricted to `tele` user only (mode `0600`)
-
-### Create Gmail App Password
-
-Gmail blocks insecure login attempts. Create an app-specific password instead:
-
-1. Go to https://myaccount.google.com
-2. Select **Security** (left sidebar)
-3. Scroll down to **App passwords**
-   - If not visible, enable 2-step verification first
-4. Select **Mail** and **Linux/Other (custom name)**
-5. Google generates a 16-character password (e.g., `abcd efgh ijkl mnop`)
-6. Copy this password (remove spaces)
-
-**Important:** This is NOT your Gmail password. Use this app password in `credentials.txt`.
-
-### Create Dropbox Account and Set Up rclone
-
-#### 1. Create a Dropbox Account
-
-Go to https://www.dropbox.com and create an account, suggest using teh gmail address for this station.
-
-#### 2. Generate rclone Authorisation
-
-On the TELE1 node, initialise rclone with your Dropbox account:
-
-```bash
-rclone config
-```
-
-Follow the interactive prompts:
-
-- **Name for new remote:** Enter `tele1_dropbox`
-- **Storage to configure:** Select `dropbox` (usually option 9 or 11)
-- **Use auto config?** Select **N** (no), as the node may lack a browser
-- **Result:** rclone will print a link to authorise manually
-
-On your local machine (or any machine with a browser):
-
-1. Open the link rclone printed
-2. Authorise the rclone application to access your Dropbox
-3. Return to the node terminal; rclone will complete the setup
-
-Verify rclone configuration:
-
-```bash
-rclone listremotes
-```
-
-You should see `tele1_dropbox:` in the output.
-
-Test the connection:
-
-```bash
-rclone ls tele1_dropbox:/
-```
-
-### Create credentials.txt
-
-Create the credentials file on the TELE1 node:
-
-```bash
-cat > /home/tele/tele/credentials.txt <<'EOF'
-# TELE1 Credentials
-# DO NOT commit to version control
-# Store securely and outside public repositories
-
-# Email credentials (for notifications)
-EMAIL_TO="your-receiving-email@example.com"
-EMAIL_FROM="your-gmail-account@gmail.com"
-EMAIL_PASSWORD="abcdefghijklmnop"          # Use app password, not Gmail password
-EMAIL_TIMEOUT=120
-
-# Optional: Dropbox remote name (must match rclone config)
-# RCLONE_REMOTE is set in tele1.sh, but can be overridden here if needed
-EOF
-chmod 600 /home/tele/tele/credentials.txt
-chown tele:tele /home/tele/tele/credentials.txt
-```
-
-**Important:**
-- Never commit `credentials.txt` to version control
-- The file is mode `0600` (readable by `tele` user only)
-- Test email credentials by examining `/home/tele/tele/log/` after a test run
-
----
-
-## Configuration
-
-### Configuration Sources
-
-TELE1 supports both remote (Dropbox-based) and local configuration:
-
-1. **Remote config** (preferred): Downloaded from Dropbox at each run
-2. **Local config** (fallback): Embedded in the node or provided via `config.txt`
-
-### Execution Modes
-
-The `EXECUTE` parameter controls the behaviour after data upload:
-
-| Mode | Behaviour | Use Case |
-|------|-----------|----------|
-| `auto` | Harvest, upload, notify, power down immediately | Normal unattended operation |
-| `ssh` | Harvest, upload, notify, then wait for SSH access before shutdown | Remote access/debugging window |
-| `clear` | As `auto`, plus delete all data and logs after upload | Data wipe mode |
-| `vnc` | **Not implemented in this version**; planned for future release | Remote graphical access |
-
-### WAIT_TIME_SSH Parameter
-
-When using `EXECUTE=ssh`, the `WAIT_TIME_SSH` parameter specifies how many **hours** the node will remain powered on, available for SSH access.
-
-**Important:** The computer will consume power for the entire duration specified. For example:
-
-- `WAIT_TIME_SSH=0.5` → Node available for 30 minutes
-- `WAIT_TIME_SSH=2` → Node available for 2 hours
-- `WAIT_TIME_SSH=0` → No wait; power down immediately after upload
-
-Choose `WAIT_TIME_SSH` based on:
-- Your field site's battery/solar capacity
-- Expected time needed for remote troubleshooting
-- Power budget for your deployment
-
-### Create Local config.txt (Dropbox Upload)
-
-Create a local configuration file and upload it to Dropbox. This allows you to change TELE1 behaviour remotely for each run.
-
-Create `/tmp/config.txt`:
-
-```bash
-cat > /tmp/config.txt <<'EOF'
-# TELE1 Configuration
-# Upload this file to Dropbox at /config.txt
-
-# Execution mode: auto, ssh, or clear
-EXECUTE=auto
-
-# Time (hours) to wait for SSH access if EXECUTE=ssh
-# Computer will consume power for this duration
-WAIT_TIME_SSH=0
-EOF
-```
-
-Upload to Dropbox using rclone:
-
-```bash
-rclone copy /tmp/config.txt tele1_dropbox:/
-```
-
-Verify:
-
-```bash
-rclone ls tele1_dropbox:/
-```
-
-You should see `config.txt` listed.
-
-### Example Configurations
-
-**Configuration 1: Unattended Field Deployment (Normal)**
-
-```
-EXECUTE=auto
-WAIT_TIME_SSH=0
-```
-
-The node harvests data, uploads, sends email, and powers down immediately.
-
-**Configuration 2: Remote Debugging (SSH Access)**
-
-```
-EXECUTE=ssh
-WAIT_TIME_SSH=1
-```
-
-The node harvests data, uploads, sends email, and remains powered on for 1 hour. You can SSH in via Tailscale for diagnostics.
-
-**Configuration 3: Data Wipe (Clean Start)**
-
-```
-EXECUTE=clear
-WAIT_TIME_SSH=0
-```
-
-After successful upload, all local data and logs are deleted.
-
----
-
-## Autostart Configuration (Desktop)
-
-For deployments using graphical autostart (not recommended for unattended field use, but useful for lab/testing):
-
-Create the autostart entry:
-
-```bash
-mkdir -p ~/.config/autostart
-cat > ~/.config/autostart/tele1.desktop <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=tele1
-Comment=Run tele1 in terminal
-Exec=gnome-terminal -- bash -c "/home/tele/tele/tele1.sh; exec bash"
-Terminal=false
-X-GNOME-Autostart-enabled=true
-EOF
-```
-
-This runs `tele1.sh` in a visible terminal after login, allowing manual inspection or cancellation if needed.
-
----
-
-## Verification and Testing
-
-### Pre-Deployment Checklist
-
-Before sending a node to the field, verify all components:
-
-- [ ] **System boot:** Ubuntu 20.04 LTS installed; system time set to UTC
-- [ ] **User account:** `tele` user created with sudo privileges and autologin enabled
-- [ ] **Shutdown:** Passwordless `sudo poweroff` works without prompts
-- [ ] **BIOS:** RTC power-on and Ignition key enabled
-- [ ] **Packages:** All required packages installed (`apt install` successful)
-- [ ] **Pegasus:** `/opt/PegasusHarvester/pegasus-harvester` exists and is executable
-- [ ] **Git:** Repository cloned or scripts manually deployed to `/home/tele/tele`
-- [ ] **Script permissions:** All `.sh` files are executable and owned by `tele`
-- [ ] **Tailscale:** Node online and reachable via Tailscale SSH
-- [ ] **rclone:** Configured with `tele1_dropbox` remote; can list and upload to Dropbox
-- [ ] **Credentials:** `credentials.txt` created (mode `0600`) with valid email and Dropbox settings
-- [ ] **Config:** `config.txt` uploaded to Dropbox; default `EXECUTE=auto` and `WAIT_TIME_SSH=0`
-- [ ] **Logs:** Directory `/home/tele/tele/log/computer/` is writable by `tele` user
-
-### Manual Test Run
-
-Run TELE1 manually to verify end-to-end operation:
-
-```bash
-sudo -u tele /home/tele/tele/tele1.sh
-```
-
-Monitor the output. Expected stages:
-
-1. **System Preparation:** Checks dependencies and hardware
-2. **Configuration Loading:** Fetches config from Dropbox (or uses defaults)
-3. **Network Initialisation:** Verifies internet connectivity
-4. **Data Collection:** Runs Pegasus Harvester, collects Starlink diagnostics
-5. **Data Upload:** Compresses and uploads to Dropbox via rclone
-6. **Notification:** Sends status email
-7. **Cleanup and Shutdown:** Powers down system (with interactive prompt)
-
-**Expected outcomes:**
-
-- Log file created: `/home/tele/tele/log/tele1_YYYY-MM-DDTHH-MM-SS.log`
-- Compressed archive uploaded to Dropbox
-- Email notification received with status
-- System prompts for shutdown confirmation
-
-### Verify Uploaded Data
-
-After test run, check Dropbox:
-
-```bash
-rclone ls tele1_dropbox:/
-```
-
-You should see files like `tele1_2026-01-09T12-34-56.tar.gz`.
-
-### Email Notification Testing
-
-Confirm that email settings work:
-
-```bash
-source /home/tele/tele/credentials.txt
-curl --url "smtps://smtp.gmail.com:465" \
-  --ssl-reqd \
-  --mail-from "$EMAIL_FROM" \
-  --mail-rcpt "$EMAIL_TO" \
-  --user "$EMAIL_FROM:$EMAIL_PASSWORD" \
-  -T /dev/null -H "Subject: TELE1 Test Email" \
-  -d "This is a test message from TELE1."
-```
-
-If this succeeds silently, email is configured correctly.
-
-### Shutdown Test
-
-The system should prompt for shutdown at the end. Test passwordless shutdown:
-
-```bash
-sudo /sbin/poweroff
-```
-
-This should power off immediately without prompting for a password.
-
----
-
-## Troubleshooting
-
-### tele1.sh Fails to Start
-
-**Check syntax:**
-
-```bash
-bash -n /home/tele/tele/tele1.sh
-bash -n /home/tele/tele/lib/common.sh
-```
-
-**Common issues:**
-
-- Missing library files in `/home/tele/tele/lib/`
-- `credentials.txt` not found or not readable by `tele` user
-- Incorrect file ownership or permissions
-
-**Solution:**
-
-```bash
-ls -la /home/tele/tele/
-ls -la /home/tele/tele/lib/
-ls -la /home/tele/tele/credentials.txt
-```
-
-Verify ownership is `tele:tele` and permissions are correct.
-
-### Pegasus Harvester Not Found
-
-**Error:** `FATAL: Required file missing: /opt/PegasusHarvester/pegasus-harvester`
-
-**Solution:**
-
-```bash
-ls -la /opt/PegasusHarvester/
-/opt/PegasusHarvester/pegasus-harvester --version
-```
-
-If not found, re-deploy the binary and ensure it's executable.
-
-### rclone Upload Fails
-
-**Error in logs:** `FAILED: Harvest archive upload failed`
-
-**Check rclone configuration:**
-
-```bash
-rclone listremotes
-rclone ls tele1_dropbox:/
-```
-
-If Dropbox is unreachable:
-
-1. Verify internet connectivity: `ping -c 1 8.8.8.8`
-2. Re-authorise rclone: `rclone config`
-3. Check Dropbox token hasn't expired
-4. Memory full
-
-### Email Notifications Not Received
-
-**Check credentials:**
-
-```bash
-cat /home/tele/tele/credentials.txt
-```
-
-Ensure `EMAIL_FROM`, `EMAIL_TO`, and `EMAIL_PASSWORD` are correct.
-
-**Test email manually:**
-
-```bash
-source /home/tele/tele/credentials.txt
-echo "Test" | curl --url "smtps://smtp.gmail.com:465" \
-  --ssl-reqd \
-  --mail-from "$EMAIL_FROM" \
-  --mail-rcpt "$EMAIL_TO" \
-  --user "$EMAIL_FROM:$EMAIL_PASSWORD" \
-  -T - -H "Subject: Test"
-```
-
-**Common issues:**
-
-- Using Gmail account password instead of app password
-- `EMAIL_TO` and `EMAIL_FROM` addresses are swapped
-- Gmail account requires 2-step verification enabled
-
-### No Data in Dropbox After Upload
-
-**Check rclone logs:**
-
-```bash
-tail /home/tele/tele/log/rclone_errors.log
-```
-
-**Verify data was collected:**
-
-```bash
-ls -la /home/tele/tele/data/pegasus/
-du -sh /home/tele/tele/data/pegasus/
-```
-
-If empty, Pegasus harvester may not have collected data. Check:
-
-```bash
-ls -la /opt/PegasusHarvester/
-lsusb  # Check if Pegasus data logger is connected via USB
-```
-
-### Tailscale SSH Not Working
-
-**Verify Tailscale status:**
-
-```bash
-sudo tailscale status
-```
-
-Should show your node and other devices as "active".
-
-**Check if node is online:**
-
-From your admin machine:
-
-```bash
-tailscale status
-```
-
-Look for the TELE1 node's Tailscale IP.
-
-**If node is offline:**
-
-- Check internet connectivity: `ping -c 1 8.8.8.8`
-- Restart Tailscale: `sudo systemctl restart tailscaled`
-- Check auth key validity (may have expired in Tailscale console)
-
-### System Doesn't Power Off
-
-**Check sudoers configuration:**
-
-```bash
-sudo visudo
-```
-
-Verify the line `tele ALL=(ALL) NOPASSWD: /sbin/poweroff, /usr/sbin/poweroff` is present.
-
-**Test directly:**
-
-```bash
-sudo /sbin/poweroff
-```
-
-Should power off immediately.
-
-### BIOS Won't Boot Automatically
-
-**Verify BIOS settings (F2 at startup):**
-
-- RTC power-on is **enabled**
-- Ignition key is set to **power on** (not disabled)
-
-If system still doesn't boot when AC power is restored:
-
-- Upgrade BIOS to latest version for Shuttle SPCEL03
-- Contact Shuttle support with serial number and BIOS version
-
----
-
-## Next Steps
-
-1. **Field Deployment:** Once all verification tests pass, the node is ready for deployment.
-
-2. **Remote Monitoring:** Use Tailscale SSH to access the node remotely via your admin machine.
-
-3. **Data Retrieval:** Download logs and raw data from Dropbox or via SCP:
-
-   ```bash
-   scp -r tele@<tailscale-ip>:/home/tele/tele/log ~/backups/
-   ```
-
-4. **Configuration Updates:** Modify `/tmp/config.txt` locally and re-upload to Dropbox to change behaviour on the next run.
-
-5. **Support and Diagnostics:** Keep SSH access available for debugging. Check `/home/tele/tele/log/` for detailed run logs.
-
----
-
-## Additional Resources
-
-- **Ubuntu Time:** https://help.ubuntu.com/community/UbuntuTime
-- **Ubuntu Autologin:** https://help.ubuntu.com/stable/ubuntu-help/user-autologin.html.en
-- **Tailscale:** https://tailscale.com/blog/free-plan
-- **Tailscale Admin Console:** https://login.tailscale.com
-- **rclone Documentation:** https://rclone.org/
-- **Shuttle SPCEL03:** https://au.shuttle.com/products/productsDetail?pn=SPCEL02/03&c=edge-pc
-- **Starlink Mini:** https://www.jbhifi.com.au/products/starlink-mini
-
----
-
-**End of Installation Guide**
-
-For questions or updates, contact me.
-
-<img src="https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/GRIT%20_Final.png" width="150">
-
-<!-- ORIGINAL_GUIDE_ARCHIVE_END -->
-
-</details>
+`docs/DESIGN.md` explains how the collection and recovery work,
+`docs/VALIDATION.md` covers the tests, and `docs/REVIEW_SUMMARY.md` records
+the software review.
+
+I would like this guide to remain useful as a complete set of build and setup
+notes, including the hardware links and photographs. If you build a station
+or find something that can be improved, please get in touch.

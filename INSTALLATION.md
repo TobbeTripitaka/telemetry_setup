@@ -1,16 +1,14 @@
 # TELE1 installation and field deployment guide
 
 This is the comprehensive hardware, assembly, Ubuntu, software, remote-access,
-testing and operating guide for TELE1. It combines Tobias Stål's original
-installation notes, supplier links and photographs with the native-Harvester v4
-design, rather than replacing the practical deployment information.
+testing and operating guide for TELE1. 
 
 **Guide updated:** 27 September 2026. **Software described:** `4.0.0-alpha.1`,
 code commit `171e2e5f68b2b3ac9dce7d1ef8ba404f13b9f2a6`.
 The original January 2026 guide described the v3 GUI/Puppeteer installation.
 That entire guide is preserved in the collapsed legacy appendix at the end.
 
-> **Read before running commands:** v4 is a bench-test candidate, not a
+> **Read before running commands:** v4 is a bench-test candidate, not yet a
 > field-approved release. Its 43 local tests use synthetic Harvester output and
 > local rclone transfers. Real recorder completeness, live Dropbox recovery,
 > VNC, BIOS wake-up, poweroff and USB-relay behaviour still require acceptance
@@ -150,8 +148,10 @@ they are not a rated wiring diagram or proof of environmental certification.
 
 <img src="img/photo_4.JPG" width="720" alt="Complete TELE1 test arrangement in the outer enclosure, with antenna in the lid and recorder and electronics below">
 
-Photo: Tobias Stål. Original repository photograph:
+Photo: Original repository photograph:
 [photo_4.JPG](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_4.JPG).
+_photo: Tobias Stål_
+
 
 ### Shuttle SPCEL03 edge computer
 
@@ -193,8 +193,10 @@ network timeout and collection settings.
 
 <img src="img/photo_1.JPG" width="720" alt="TELE1 inner enclosure showing the finned computer, power components and cabling">
 
-Photo: Tobias Stål. Original repository photograph:
+
 [photo_1.JPG](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_1.JPG).
+_photo: Tobias Stål_
+
 
 ### Starlink DC power regulator
 
@@ -276,9 +278,7 @@ arrangement would be improved in a future hardware version.
 
 <img src="img/photo_3.JPG" width="720" alt="Close-up of the Nanometrics Pegasus recorder and its connected data cable">
 
-Photo: Tobias Stål. This additional supplied photograph is retained in the
-current guide as the Pegasus connector close-up; the original guide already
-included the other three photographs.
+Photo: Tobias Stål.
 
 ### Photograph and drawing record
 

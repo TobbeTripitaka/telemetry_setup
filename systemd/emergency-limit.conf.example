@@ -1,6 +1,6 @@
-# Install as /etc/systemd/system/tele1-power-guard.timer.d/limit.conf.
+# Install as /etc/systemd/system/tele-power-guard.timer.d/limit.conf.
 # Local administrator setting. Not executable/downloadable Dropbox configuration.
-# Match RuntimeMaxSec in a tele1.service drop-in if changing the limit.
+# Match RuntimeMaxSec in a tele.service drop-in if changing the limit.
 [Timer]
 OnBootSec=
 OnBootSec=4h

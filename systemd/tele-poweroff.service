@@ -1,5 +1,5 @@
 [Unit]
-Description=TELE1 emergency power off
+Description=TELE emergency power off
 DefaultDependencies=no
 
 [Service]

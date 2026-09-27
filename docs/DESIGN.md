@@ -1,4 +1,4 @@
-# TELE1 v4 candidate: design and review
+# TELE v4 candidate: design and review
 
 This document records the implementation decisions after reviewing the GitHub
 baseline and the supplied scripts. It distinguishes local software validation
@@ -27,11 +27,11 @@ from the device and service testing still required before field use.
 - **Shutdown on failure is required**, not a design defect for this application.
   The defects were late installation of the exit trap and inadequate protection
   against a stuck process. The initial `INT TERM EXIT` trap in the supplied
-  `tele1.sh` was commented out, not an active first trap.
+  `tele.sh` was commented out, not an active first trap.
 - **The old `PEGASUS_BIN` path was a GUI launch target.** It was not necessarily
   wrong for the old Puppeteer workflow. The replacement deliberately uses the
   verified bundled native `.../build/Release/harvester`.
-- **“Since last” was not implemented in `tele1.sh`.** Configuration passed a
+- **“Since last” was not implemented in `tele.sh`.** Configuration passed a
   mode to JavaScript, which selected the GUI button. It was not tied to Dropbox
   verification. The replacement owns per-day upload acknowledgments.
 - **`-safe` is not read-only mode.** The user's native output includes
@@ -45,6 +45,16 @@ from the device and service testing still required before field use.
   The candidate explicitly requests `-d=24` and does not override `-p`.
 
 ## Pipeline and transaction boundary
+
+The lowercase `station` setting in `/etc/tele/config.txt` supplies the upload
+and local-state label. Node configuration contains hardware identity and the
+Dropbox remote/root, not the station label. The station's downloaded `config.txt`
+must declare the same label; a missing/mismatched label is rejected before the
+cache or active settings are changed.
+
+This resolves the initial config-location lookup without letting a misplaced
+remote file switch destinations and reuse checkpoints from a different station.
+See `docs/RENAME.md` before changing an installed station's paths.
 
 ```text
 boot timer active
@@ -88,7 +98,7 @@ One-way checking only requires source files to exist and match remotely
 
 ## Module responsibilities
 
-- **`tele1.sh`:** short orchestration, exclusive lock, stage status, best-effort
+- **`tele.sh`:** short orchestration, exclusive lock, stage status, best-effort
   failure notification, maintenance entry. Shutdown is owned outside the script.
 - **`common.sh`:** stderr logging, atomic durable replacements, command bounds,
   dependency/private-file checks and free-space threshold.

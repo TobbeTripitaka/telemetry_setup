@@ -1,4 +1,6 @@
 # Copy to <dropbox_root>/tele/<station_name>/config.txt.
+# Must match station in the computer's /etc/tele/config.txt.
+station=station01
 # EXECUTE: auto | ssh | vnc. auto does not wait for remote access.
 EXECUTE=ssh
 MAINTENANCE_IDLE_SECONDS=600

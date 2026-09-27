@@ -1,4 +1,4 @@
-# TELE1 native-CLI candidate: review summary
+# TELE native-CLI candidate: review summary
 
 Prepared 27 September 2026 from GitHub main commit
 `be9934be982b0f6027a2f2fa072d49a3b39eb0e5`.

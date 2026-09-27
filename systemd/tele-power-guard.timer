@@ -1,0 +1,13 @@
+[Unit]
+Description=TELE emergency battery-protection timer (independent of collector)
+DefaultDependencies=no
+After=local-fs.target
+ConditionPathExists=/etc/tele/FIELD_ENABLED
+
+[Timer]
+OnBootSec=4h
+AccuracySec=1s
+Unit=tele-poweroff.service
+
+[Install]
+WantedBy=timers.target

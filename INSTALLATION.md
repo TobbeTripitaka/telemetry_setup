@@ -1,6 +1,6 @@
-# TELE1 installation and field deployment guide
+# TELE installation and field deployment guide
 
-I built TELE1 to collect seismic data from remote stations where power and
+I built TELE to collect seismic data from remote stations where power and
 internet access are limited. The idea is straightforward: wake the computer,
 copy data from the Pegasus recorder, upload it to Dropbox, send a status email
 and switch everything off again.
@@ -22,7 +22,7 @@ The exact code revision used for testing is listed in the installation section.
 
 ## Contents
 
-- [About TELE1](#about-tele1)
+- [About TELE](#about-tele)
 - [Hardware and enclosure](#hardware-and-enclosure)
 - [Assembly, cabling and power checks](#assembly-cabling-and-power-checks)
 - [Station details](#station-details)
@@ -32,7 +32,7 @@ The exact code revision used for testing is listed in the installation section.
 - [Obtain and verify Nanometrics Harvester](#obtain-and-verify-nanometrics-harvester)
 - [Identify the Pegasus recorder safely](#identify-the-pegasus-recorder-safely)
 - [Understand and test the native Harvester commands](#understand-and-test-the-native-harvester-commands)
-- [Obtain and deploy a pinned TELE1 release](#obtain-and-deploy-a-pinned-tele1-release)
+- [Obtain and deploy a pinned TELE release](#obtain-and-deploy-a-pinned-tele-release)
 - [Configure Dropbox and rclone](#configure-dropbox-and-rclone)
 - [Configure local station identity](#configure-local-station-identity)
 - [Configure email and protect credentials](#configure-email-and-protect-credentials)
@@ -51,9 +51,9 @@ Set up and test a new station on the bench, with reliable power and physical
 access to the computer. If you are changing a station that is already deployed,
 read the shutdown and recovery sections first.
 
-## About TELE1
+## About TELE
 
-TELE1 runs on an Ubuntu computer connected to a Nanometrics Pegasus recorder
+TELE runs on an Ubuntu computer connected to a Nanometrics Pegasus recorder
 and Starlink. The Pegasus keeps recording while the computer is off; the
 computer only needs to be awake when collecting and transmitting data.
 
@@ -101,7 +101,7 @@ run and may need many bounded collection cycles.
 BIOS wakes computer
   -> USB 5 V energizes the Starlink control relay
   -> independent emergency timer is armed
-  -> TELE1 starts and takes an exclusive lock
+  -> TELE starts and takes an exclusive lock
   -> station configuration and diagnostics
   -> retry complete pending uploads
   -> identify recorder and inspect volume ranges
@@ -146,7 +146,7 @@ The photographs show how I arranged the computer, recorder, power components
 and antenna. They should help with the layout, but check the component manuals
 for wiring and electrical ratings.
 
-<img src="img/photo_4.JPG" width="720" alt="Complete TELE1 test arrangement in the outer enclosure, with antenna in the lid and recorder and electronics below">
+<img src="img/photo_4.JPG" width="720" alt="Complete TELE test arrangement in the outer enclosure, with antenna in the lid and recorder and electronics below">
 
 Test setup. Photo: Tobias Stål.
 [Full-size photograph](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_4.JPG).
@@ -187,7 +187,7 @@ An antenna that reconnects quickly on a warm bench may behave differently after
 a week unpowered in the field. Measure cold-start readiness before choosing
 network timeout and collection settings.
 
-<img src="img/photo_1.JPG" width="720" alt="TELE1 inner enclosure showing the finned computer, power components and cabling">
+<img src="img/photo_1.JPG" width="720" alt="TELE inner enclosure showing the finned computer, power components and cabling">
 
 Test setup. Photo: Tobias Stål.
 [Full-size photograph](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_1.JPG).
@@ -228,7 +228,7 @@ Check reception with your own enclosure, antenna position and site conditions.
 The orange inner case and grey outer enclosure in the photographs are separate
 parts of the assembly; the product link above is for the Pelican 1200.
 
-<img src="img/photo_2.JPG" width="720" alt="Open orange TELE1 enclosure inside the larger outer case, showing computer and cable routing">
+<img src="img/photo_2.JPG" width="720" alt="Open orange TELE enclosure inside the larger outer case, showing computer and cable routing">
 
 Test setup. Photo: Tobias Stål.
 [Full-size photograph](https://github.com/TobbeTripitaka/telemetry_setup/blob/main/img/photo_2.JPG).
@@ -322,7 +322,7 @@ Store passwords and tokens separately from the general hardware and setup notes.
 
 | Item | Record for this station |
 |---|---|
-| Station name | Unique `STATION_NAME`, such as `station01` |
+| Station name | Unique `station` value in `config.txt`, such as `station01` |
 | Location and operator | Site reference and responsible contacts |
 | Computer | Model, serial, storage, RAM and supply specification |
 | BIOS | Version, RTC setting, timezone convention, AC-restore setting |
@@ -330,7 +330,7 @@ Store passwords and tokens separately from the general hardware and setup notes.
 | Pegasus | Recorder identity, firmware, USB disk serial and whole-disk by-id path |
 | Harvester | Package filename, version, source and trusted checksum |
 | OS | Ubuntu release, architecture and installation date |
-| TELE1 | Release version and exact Git commit |
+| TELE | Release version and exact Git commit |
 | Dependencies | rclone, Tailscale, grpcurl and TigerVNC versions |
 | Dropbox | Account owner, remote name, root and station prefix |
 | Remote access | Tailnet, device identity, permitted users and recovery method |
@@ -338,7 +338,7 @@ Store passwords and tokens separately from the general hardware and setup notes.
 | Data policy | Collection mode, overlap, local last-batch retention |
 | Acceptance | Test results, observed poweroff and next-wake evidence |
 
-The main guide uses `station01`, `tele1_dropbox`, `my_dropbox_path` and the
+The main guide uses `station01`, `tele_dropbox`, `my_dropbox_path` and the
 `tele` Linux account as examples. Replace these deliberately and consistently;
 do not use one station's Dropbox prefix for multiple independent writers.
 
@@ -351,7 +351,7 @@ is the latest LTS, currently 26.04.1, but check that the Nanometrics package wor
 on it before committing to a field deployment ([Ubuntu releases](https://releases.ubuntu.com/)).
 
 Use the x86-64/AMD64 image appropriate to the Shuttle hardware. A server or desktop
-installation can host the collection service; TELE1 does not require graphical
+installation can host the collection service; TELE does not require graphical
 autologin to start harvesting.
 
 I would not upgrade the operating system of an inaccessible station just to
@@ -398,7 +398,7 @@ For a new `tele` account:
 ```bash
 id tele
 # If it does not exist:
-sudo adduser --disabled-password --gecos "TELE1 Data Collection" tele
+sudo adduser --disabled-password --gecos "TELE Data Collection" tele
 ```
 
 If `tele` also needs administrator access, add it to the `sudo` group:
@@ -414,7 +414,7 @@ blanket passwordless sudo to make installation convenient.
 
 ### Graphical autologin and desktop choices
 
-Graphical autologin is optional. The system service starts TELE1 without a desktop
+Graphical autologin is optional. The system service starts TELE without a desktop
 login, so there is no need to enable autologin for data collection.
 If you need it for another local task, see
 [Ubuntu's autologin instructions](https://help.ubuntu.com/stable/ubuntu-help/user-autologin.html.en).
@@ -513,7 +513,7 @@ command -v timeout flock lsblk findmnt ss ps sha256sum
 | usbutils | Bench USB discovery through `lsusb` |
 | ShellCheck | Local static analysis before release |
 
-Use the Ubuntu package name `usbutils` for `lsusb`. TELE1 itself does not need
+Use the Ubuntu package name `usbutils` for `lsusb`. TELE itself does not need
 Node.js, npm or Chromium.
 
 Build tools such as `build-essential`, `libssl-dev`, `libffi-dev` and
@@ -641,9 +641,9 @@ the native collection job against the same recorder simultaneously.
 ## Understand and test the native Harvester commands
 
 The installed binary's help is the best starting point for checking its commands.
-These are the ones useful for setting up and diagnosing TELE1.
+These are the ones useful for setting up and diagnosing TELE.
 
-| Command | Purpose and TELE1 use |
+| Command | Purpose and TELE use |
 |---|---|
 | `help` | Print supported commands and parameters |
 | `version -all` | Record application and dependency versions |
@@ -703,7 +703,7 @@ The symbols refer to year, network, station, channel, location and Julian day.
 Other data types may have their own native outputs. Keep those paths unchanged
 as well, rather than adding a separate naming scheme.
 
-TELE1 deliberately does not pass `-p`. It passes `-d=24` to request daily
+TELE deliberately does not pass `-p`. It passes `-d=24` to request daily
 waveform files, because the installed CLI help lists a one-hour default even
 though the native pattern contains a day number.
 
@@ -778,7 +778,7 @@ Recorder harvest history is not the same as upload history. The script needs
 to know what has been verified in Dropbox, not just what has been read from
 the recorder.
 
-## Obtain and deploy a pinned TELE1 release
+## Obtain and deploy a pinned TELE release
 
 ### Clone on the bench machine
 
@@ -793,11 +793,13 @@ cd telemetry_setup
 git status --short
 ```
 
-To test the software described in this guide, check out this exact commit:
+Record and pin the revision you are about to test. For a field installation,
+use the exact revision that passed the bench checks, not an automatically
+updated branch:
 
 ```bash
-TELE1_COMMIT=171e2e5f68b2b3ac9dce7d1ef8ba404f13b9f2a6
-git checkout --detach "$TELE1_COMMIT"
+TELE_COMMIT=$(git rev-parse HEAD)
+git checkout --detach "$TELE_COMMIT"
 git rev-parse HEAD
 cat VERSION
 ```
@@ -817,21 +819,21 @@ the computer. They require the local Ubuntu tools installed earlier.
 ```bash
 bash tests/run.sh
 shellcheck -S warning -e SC2034 \
-  tele1.sh lib/common.sh lib/config.sh lib/hardware.sh \
+  tele.sh lib/common.sh lib/config.sh lib/hardware.sh \
   lib/harvest.sh lib/upload.sh lib/notification.sh lib/remote.sh \
   scripts/*.sh tests/*.sh
 ```
 
 SC2034 is excluded for intentional shared globals between sourced modules.
-The 43 automated tests pass locally. They do not replace the checks with a
+The automated tests do not replace the checks with a
 real recorder, a live Dropbox connection and the station's power hardware.
 
 ### Intended runtime layout
 
 ```text
-/opt/tele1/
+/opt/tele/
   releases/<version-and-commit>/
-    tele1.sh
+    tele.sh
     VERSION
     lib/
     scripts/
@@ -839,20 +841,21 @@ real recorder, a live Dropbox connection and the station's power hardware.
     config/
     docs/
   current -> releases/<version-and-commit>
-/etc/tele1/
+/etc/tele/
   node.conf
+  config.txt                    # local settings, including station
   credentials.txt
   rclone.conf
   vnc/tele.passwd
   FIELD_ENABLED                 # absent until explicit field activation
-/var/lib/tele1/<station_name>/
+/var/lib/tele/<station_name>/
   pending/
   verified/
   owners/
   last-verified/
   config.txt                    # last validated remote settings
   recorder-id
-/var/log/tele1/<station_name>/
+/var/log/tele/<station_name>/
 ```
 
 Code, runtime state and credentials are separate. Updating or rolling back code
@@ -865,8 +868,8 @@ release directory; if the chosen path already exists, inspect it and select an
 appropriate new release path.
 
 ```bash
-RELEASE_DIR='/opt/tele1/releases/4.0.0-alpha.1-171e2e5'
-sudo install -d -m 0755 /opt/tele1/releases
+RELEASE_DIR="/opt/tele/releases/$(cat VERSION)-${TELE_COMMIT:0:7}"
+sudo install -d -m 0755 /opt/tele/releases
 sudo mkdir "$RELEASE_DIR"
 ```
 
@@ -874,12 +877,12 @@ From the checked-out repository, after confirming the directory is new:
 
 ```bash
 set -o pipefail
-git archive "$TELE1_COMMIT" \
-  tele1.sh VERSION lib scripts systemd config docs tests \
+git archive "$TELE_COMMIT" \
+  tele.sh VERSION lib scripts systemd config docs tests \
   README.md INSTALLATION.md img |
   sudo tar -x -C "$RELEASE_DIR"
 sudo chown -R root:root "$RELEASE_DIR"
-sudo chmod 0755 "$RELEASE_DIR/tele1.sh" "$RELEASE_DIR/scripts/vnc-desktop.sh"
+sudo chmod 0755 "$RELEASE_DIR/tele.sh" "$RELEASE_DIR/scripts/vnc-desktop.sh"
 ```
 
 No credentials or live data should be in the source checkout. The selected
@@ -888,11 +891,11 @@ archive paths also leave out the repository's stored runtime logs.
 For a new installation only, create the current link:
 
 ```bash
-sudo ln -s "$RELEASE_DIR" /opt/tele1/current
-readlink -f /opt/tele1/current
+sudo ln -s "$RELEASE_DIR" /opt/tele/current
+readlink -f /opt/tele/current
 ```
 
-If `/opt/tele1/current` already exists, use the later update/rollback procedure
+If `/opt/tele/current` already exists, use the later update/rollback procedure
 instead of blindly replacing it during a running collection.
 
 ### Create configuration directories
@@ -901,8 +904,8 @@ Keep private files mode 0600 and root-owned. The top-level directory allows
 traversal so the separately protected VNC subdirectory can be accessed by `tele`.
 
 ```bash
-sudo install -d -o root -g root -m 0755 /etc/tele1
-sudo install -d -o root -g root -m 0700 /var/lib/tele1 /var/log/tele1
+sudo install -d -o root -g root -m 0755 /etc/tele
+sudo install -d -o root -g root -m 0700 /var/lib/tele /var/log/tele
 ```
 
 Do not create `FIELD_ENABLED` yet. Do not start or enable the collector until
@@ -915,7 +918,7 @@ I suggest using the station's Gmail address if you want to keep its accounts
 together, although the software does not require this.
 
 Rclone uses Dropbox OAuth authorization, not a Dropbox account password in
-TELE1's email file. Its configuration contains sensitive token material and must
+TELE's email file. Its configuration contains sensitive token material and must
 remain private ([rclone Dropbox documentation](https://rclone.org/dropbox/)).
 
 ### Choose the remote and destination
@@ -923,10 +926,13 @@ remain private ([rclone Dropbox documentation](https://rclone.org/dropbox/)).
 The guide uses these example values:
 
 ```text
-RCLONE_REMOTE=tele1_dropbox
+RCLONE_REMOTE=tele_dropbox
 DROPBOX_ROOT=my_dropbox_path
-STATION_NAME=station01
+station=station01
 ```
+
+The remote/root values go in local `node.conf`; `station` goes in local and
+remote `config.txt`. They are shown together here only to illustrate the path.
 
 The resulting Dropbox layout is:
 
@@ -957,13 +963,13 @@ Use distinct station names and prefixes for distinct computers.
 Provision the rclone configuration that the root service will actually use:
 
 ```bash
-sudo rclone --config /etc/tele1/rclone.conf config
+sudo rclone --config /etc/tele/rclone.conf config
 ```
 
 In the wizard:
 
 1. Create a new remote.
-2. Name it `tele1_dropbox`, or your deliberately chosen `RCLONE_REMOTE`.
+2. Name it `tele_dropbox`, or your deliberately chosen `RCLONE_REMOTE`.
 3. Choose backend `dropbox` by name; numeric menu positions change.
 4. Normally leave client ID/secret blank unless using your own approved Dropbox app.
 5. Select browser or headless authorization as appropriate.
@@ -971,14 +977,14 @@ In the wizard:
 7. Quit the wizard and protect the file.
 
 ```bash
-sudo chown root:root /etc/tele1/rclone.conf
-sudo chmod 0600 /etc/tele1/rclone.conf
-sudo stat -c '%a %U %G %n' /etc/tele1/rclone.conf
-sudo rclone --config /etc/tele1/rclone.conf listremotes
+sudo chown root:root /etc/tele/rclone.conf
+sudo chmod 0600 /etc/tele/rclone.conf
+sudo stat -c '%a %U %G %n' /etc/tele/rclone.conf
+sudo rclone --config /etc/tele/rclone.conf listremotes
 ```
 
 An interactive user setup normally keeps its rclone file at
-`~/.config/rclone/rclone.conf`. TELE1 instead uses the path in `node.conf`,
+`~/.config/rclone/rclone.conf`. TELE instead uses the path in `node.conf`,
 so make sure you configure the file that the root-run service will read.
 
 ### Browser authorization on the Ubuntu bench machine
@@ -1011,7 +1017,7 @@ exact command instead. Treat the resulting JSON/token as a password: do not
 paste it into GitHub issues, logs, this guide, email or an assistant conversation.
 
 An alternative is to create the remote in a dedicated configuration file on the
-Mac and securely transfer that file to `/etc/tele1/rclone.conf`, then set its
+Mac and securely transfer that file to `/etc/tele/rclone.conf`, then set its
 owner and permissions. Do not copy a general-purpose configuration containing
 unrelated cloud credentials onto the field station
 ([rclone configuration transfer](https://rclone.org/remote_setup/)).
@@ -1021,9 +1027,9 @@ unrelated cloud credentials onto the field station
 Use a separate Dropbox test prefix while setting up the station:
 
 ```bash
-REMOTE_BASE='tele1_dropbox:my_dropbox_path/tele/station01-test'
-sudo rclone --config /etc/tele1/rclone.conf mkdir "$REMOTE_BASE"
-sudo rclone --config /etc/tele1/rclone.conf lsf "$REMOTE_BASE"
+REMOTE_BASE='tele_dropbox:my_dropbox_path/tele/station01-test'
+sudo rclone --config /etc/tele/rclone.conf mkdir "$REMOTE_BASE"
+sudo rclone --config /etc/tele/rclone.conf lsf "$REMOTE_BASE"
 ```
 
 An empty listing can be valid for an empty folder. Authentication or permission
@@ -1038,12 +1044,12 @@ station or an unrelated Dropbox folder.
 ```bash
 TEST_DIR=$(mktemp -d)
 mkdir "$TEST_DIR/data"
-printf 'TELE1 bench upload test\n' >"$TEST_DIR/data/rclone-test.txt"
-sudo rclone --config /etc/tele1/rclone.conf copy \
+printf 'TELE bench upload test\n' >"$TEST_DIR/data/rclone-test.txt"
+sudo rclone --config /etc/tele/rclone.conf copy \
   "$TEST_DIR/data" "$REMOTE_BASE/setup-test" --checksum --dropbox-batch-mode sync
-sudo rclone --config /etc/tele1/rclone.conf hashsum Dropbox \
+sudo rclone --config /etc/tele/rclone.conf hashsum Dropbox \
   "$TEST_DIR/data" --output-file "$TEST_DIR/dropbox.sum"
-sudo rclone --config /etc/tele1/rclone.conf check \
+sudo rclone --config /etc/tele/rclone.conf check \
   "$TEST_DIR/dropbox.sum" "$REMOTE_BASE/setup-test" \
   --checkfile Dropbox --one-way
 ```
@@ -1057,7 +1063,7 @@ One-way checking leaves unrelated destination files alone
 After verifying the exact test destination, you may remove only the test file:
 
 ```bash
-sudo rclone --config /etc/tele1/rclone.conf deletefile \
+sudo rclone --config /etc/tele/rclone.conf deletefile \
   "$REMOTE_BASE/setup-test/rclone-test.txt"
 rm -f "$TEST_DIR/data/rclone-test.txt" "$TEST_DIR/dropbox.sum"
 rmdir "$TEST_DIR/data" "$TEST_DIR"
@@ -1072,35 +1078,33 @@ For a new installation, copy the example and edit it locally:
 
 ```bash
 sudo install -o root -g root -m 0600 \
-  /opt/tele1/current/config/node.conf.example /etc/tele1/node.conf
-sudoedit /etc/tele1/node.conf
+  /opt/tele/current/config/node.conf.example /etc/tele/node.conf
+sudoedit /etc/tele/node.conf
 ```
 
 Do not repeat the copy step over an already configured file. The finished file
 contains literal settings like these, with real non-secret identity values:
 
 ```ini
-STATION_NAME=station01
-RCLONE_REMOTE=tele1_dropbox
+RCLONE_REMOTE=tele_dropbox
 DROPBOX_ROOT=my_dropbox_path
 RECORDER_SERIAL=REPLACE_WITH_LSBLK_SERIAL
 RECORDER_DEVICE=/dev/disk/by-id/REPLACE_WITH_WHOLE_DISK_ID
-RCLONE_CONFIG=/etc/tele1/rclone.conf
+RCLONE_CONFIG=/etc/tele/rclone.conf
 PEGASUS_BIN=/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
-VNC_SERVICE=tele1-vnc@tele.service
+VNC_SERVICE=tele-vnc@tele.service
 VNC_PORT=5901
 ```
 
 | Setting | Meaning and constraints |
 |---|---|
-| `STATION_NAME` | Unique identifier; letters, numbers, dots, underscores and hyphens, beginning with a letter/number |
 | `RCLONE_REMOTE` | Configured remote name without its trailing colon |
 | `DROPBOX_ROOT` | Optional root prefix; permits letters, numbers, underscores, dots, slashes and hyphens, not spaces |
 | `RECORDER_SERIAL` | Exact trimmed serial exposed by `lsblk`; uses the same identifier character restriction |
 | `RECORDER_DEVICE` | Absolute whole-disk `/dev/disk/by-id/...` link, not a partition link |
 | `RCLONE_CONFIG` | Absolute protected rclone configuration path |
 | `PEGASUS_BIN` | Absolute native executable path |
-| `VNC_SERVICE` | Matching `tele1-vnc@<user>.service` instance |
+| `VNC_SERVICE` | Matching `tele-vnc@<user>.service` instance |
 | `VNC_PORT` | Session-detection port; keep 5901 with the supplied `:1` VNC service |
 
 Changing `VNC_PORT` alone does not reconfigure TigerVNC's listening port. Change
@@ -1111,9 +1115,54 @@ unexpected replacement. Do not delete that identity check to make a different
 recorder look like the old one; plan an explicit migration or use a new station
 identity/prefix when appropriate.
 
-Local identity and executable/device paths are not accepted from Dropbox
+Recorder identity and executable/device paths are not accepted from Dropbox
 `config.txt`. This keeps remotely downloaded settings from selecting an arbitrary
 program or disk.
+
+### Set the station label in config.txt
+
+Create the private local configuration before running TELE:
+
+```bash
+sudo install -o root -g root -m 0600 \
+  /opt/tele/current/config/config.defaults /etc/tele/config.txt
+sudoedit /etc/tele/config.txt
+```
+
+Choose a unique station name and set its normal operating mode:
+
+```ini
+station=station01
+EXECUTE=auto
+HARVEST_MODE=incremental
+HARVEST_BUDGET_SECONDS=3600
+MAINTENANCE_IDLE_SECONDS=600
+RETAIN_LAST_BATCH=yes
+```
+
+`station` is a lowercase key. Its value is one directory name, with 1–64 letters,
+numbers, dots, underscores or hyphens and a letter/number at the start.
+Spaces, slashes, empty labels and path traversal are rejected.
+
+With the example root, this produces:
+
+```text
+my_dropbox_path/tele/station01/config.txt
+my_dropbox_path/tele/station01/pegasus_harvester/
+my_dropbox_path/tele/station01/tele_logfiles/
+/var/lib/tele/station01/
+/var/log/tele/station01/
+```
+
+The local file tells TELE which station folder to look in for remote settings.
+The remote file must contain the same `station` value. A missing or different
+remote label is rejected, leaving a valid matching cache or the local settings
+in use; it never silently redirects uploads or reuses another station's state.
+
+For a test station prefix, use `station=station01-test` in both copies.
+The label is not the miniSEED station code and does not change Harvester filenames.
+If you intentionally rename a station, follow [the state and path precautions](docs/RENAME.md)
+before moving any files or acknowledgments.
 
 ## Configure email and protect credentials
 
@@ -1135,8 +1184,8 @@ For a new installation:
 
 ```bash
 sudo install -o root -g root -m 0600 \
-  /opt/tele1/current/config/credentials.txt.example /etc/tele1/credentials.txt
-sudoedit /etc/tele1/credentials.txt
+  /opt/tele/current/config/credentials.txt.example /etc/tele/credentials.txt
+sudoedit /etc/tele/credentials.txt
 ```
 
 The file accepts these three keys:
@@ -1159,9 +1208,10 @@ commands or interpret a sourced credentials script.
 
 ```bash
 sudo stat -c '%a %U %G %n' \
-  /etc/tele1/node.conf \
-  /etc/tele1/credentials.txt \
-  /etc/tele1/rclone.conf
+  /etc/tele/node.conf \
+  /etc/tele/config.txt \
+  /etc/tele/credentials.txt \
+  /etc/tele/rclone.conf
 ```
 
 Expect root ownership and mode 600 for these files. Do not print their contents
@@ -1180,11 +1230,11 @@ directories, and does not invoke the recorder or install a shutdown trap.
 ```bash
 sudo bash <<'BASH'
 set -Eeuo pipefail
-source /opt/tele1/current/tele1.sh
-load_node_config /etc/tele1/node.conf
+source /opt/tele/current/tele.sh
+load_node_config /etc/tele/node.conf
+load_local_config /etc/tele/config.txt
 init_workspace
-runtime_defaults
-load_credentials /etc/tele1/credentials.txt
+load_credentials /etc/tele/credentials.txt
 log "Explicit bench email test"
 send_notification BENCH_TEST
 BASH
@@ -1219,9 +1269,13 @@ Each computer reads its own Dropbox configuration:
 <dropbox_root>/tele/<station_name>/config.txt
 ```
 
-The script validates a downloaded file before replacing its cache. If download
-or validation fails, it uses the last validated local copy or safe built-in
-defaults; it does not execute the file as shell code.
+The private `/etc/tele/config.txt` supplies the required `station` label before
+the script constructs any upload or state paths. The downloaded file must
+declare that same station and is validated before replacing its cache.
+
+If download or validation fails, the script uses a matching validated cache or
+the local settings. Missing/invalid local station configuration stops startup
+rather than choosing a guessed upload folder. No configuration is executed as shell.
 
 ### Format rules
 
@@ -1230,6 +1284,7 @@ defaults; it does not execute the file as shell code.
 - **Quotes:** simple outer single/double quotes are accepted literally; shell
   substitutions and escapes are not evaluated.
 - **Keys:** duplicate and unknown keys are rejected, not silently accepted.
+- **Station key:** use lowercase `station`; the other documented keys are uppercase.
 - **Size:** the file is limited to 32 KiB.
 - **Dates:** whole UTC dates in `YYYY-MM-DD` format for range mode.
 - **Units:** the timeout settings below are integer seconds, not hours.
@@ -1238,6 +1293,7 @@ defaults; it does not execute the file as shell code.
 
 | Key | Default | Accepted values / effect |
 |---|---|---|
+| `station` | Required; no built-in label | 1–64 letters/numbers/dots/underscores/hyphens, starting with a letter/number; must match the local file |
 | `EXECUTE` | `auto` | `auto`, `ssh`, `vnc` |
 | `HARVEST_MODE` | `incremental` | `incremental`, `reconcile`, `reupload`, `range` |
 | `REQUEST_ID` | Empty | Required for non-incremental modes; 1–80 letters, numbers, dots, underscores or hyphens |
@@ -1252,11 +1308,12 @@ defaults; it does not execute the file as shell code.
 
 The four-hour emergency ceiling is deliberately a local administrator-controlled
 systemd setting, not a way for downloaded config to disable battery protection.
-The initial config download also starts with the built-in network bound.
+The initial config download uses the bounded timeout in the local settings.
 
 ### Normal weekly collection
 
 ```ini
+station=station01
 EXECUTE=auto
 HARVEST_MODE=incremental
 HARVEST_BUDGET_SECONDS=3600
@@ -1270,6 +1327,7 @@ wake when remote access is needed.
 ### SSH maintenance window
 
 ```ini
+station=station01
 EXECUTE=ssh
 HARVEST_MODE=incremental
 MAINTENANCE_IDLE_SECONDS=600
@@ -1287,6 +1345,7 @@ replacement for the boot-time deadline.
 ### VNC maintenance window
 
 ```ini
+station=station01
 EXECUTE=vnc
 HARVEST_MODE=incremental
 MAINTENANCE_IDLE_SECONDS=600
@@ -1299,6 +1358,7 @@ the script logs the failure and leaves the SSH waiting window open.
 ### Reconcile all retained data
 
 ```ini
+station=station01
 EXECUTE=auto
 HARVEST_MODE=reconcile
 REQUEST_ID=full-check-2026-09
@@ -1312,6 +1372,7 @@ resume a long scan over multiple wakes; use a new ID to request another full sca
 ### Force reupload
 
 ```ini
+station=station01
 EXECUTE=auto
 HARVEST_MODE=reupload
 REQUEST_ID=force-send-2026-09
@@ -1325,6 +1386,7 @@ the same acknowledged contents.
 ### Repair a date range
 
 ```ini
+station=station01
 EXECUTE=auto
 HARVEST_MODE=range
 REQUEST_ID=repair-june-october-2025
@@ -1339,14 +1401,15 @@ replacement with a shorter hour-only export.
 ### Upload the configuration
 
 Prepare a file locally, check the station destination, then upload that exact
-file. This example uses a test station prefix; switch to the real station only
-after checking the setup.
+file. This example uses a test station prefix, so both the local file and the
+file being uploaded must say `station=station01-test`. Switch to the real
+station label and prefix together only after checking the setup.
 
 ```bash
-REMOTE_BASE='tele1_dropbox:my_dropbox_path/tele/station01-test'
-sudo rclone --config /etc/tele1/rclone.conf copyto \
+REMOTE_BASE='tele_dropbox:my_dropbox_path/tele/station01-test'
+sudo rclone --config /etc/tele/rclone.conf copyto \
   /absolute/path/to/config.txt "$REMOTE_BASE/config.txt" --checksum
-sudo rclone --config /etc/tele1/rclone.conf cat "$REMOTE_BASE/config.txt"
+sudo rclone --config /etc/tele/rclone.conf cat "$REMOTE_BASE/config.txt"
 ```
 
 It is safe to inspect this non-secret runtime configuration, but do not put email
@@ -1484,14 +1547,14 @@ replace the actual run filename before using this Ubuntu command:
 
 ```bash
 sudo install -o tele -g tele -m 0600 \
-  /var/log/tele1/station01/ACTUAL-RUN.log /home/tele/tele1-export.log
+  /var/log/tele/station01/ACTUAL-RUN.log /home/tele/tele-export.log
 ```
 
 On the Mac:
 
 ```bash
 mkdir -p "$HOME/backups"
-scp tele@station01:/home/tele/tele1-export.log "$HOME/backups/"
+scp tele@station01:/home/tele/tele-export.log "$HOME/backups/"
 ```
 
 Review diagnostic files before sharing them publicly. Remove passwords, tokens
@@ -1523,13 +1586,13 @@ Create the protected VNC password location and enter a dedicated password throug
 the local prompt:
 
 ```bash
-sudo install -d -o tele -g tele -m 0700 /etc/tele1/vnc
-sudo -H -u tele tigervncpasswd /etc/tele1/vnc/tele.passwd
-sudo chown tele:tele /etc/tele1/vnc/tele.passwd
-sudo chmod 0600 /etc/tele1/vnc/tele.passwd
+sudo install -d -o tele -g tele -m 0700 /etc/tele/vnc
+sudo -H -u tele tigervncpasswd /etc/tele/vnc/tele.passwd
+sudo chown tele:tele /etc/tele/vnc/tele.passwd
+sudo chmod 0600 /etc/tele/vnc/tele.passwd
 ```
 
-The `/etc/tele1` parent must allow directory traversal by `tele`; the credentials
+The `/etc/tele` parent must allow directory traversal by `tele`; the credentials
 files themselves remain root-owned mode 600. The VNC subdirectory/password are
 private to the VNC user.
 
@@ -1537,10 +1600,10 @@ private to the VNC user.
 
 ```bash
 sudo install -o root -g root -m 0644 \
-  /opt/tele1/current/systemd/tele1-vnc@.service /etc/systemd/system/
+  /opt/tele/current/systemd/tele-vnc@.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl start tele1-vnc@tele.service
-sudo systemctl status tele1-vnc@tele.service
+sudo systemctl start tele-vnc@tele.service
+sudo systemctl status tele-vnc@tele.service
 sudo ss -ltnp | grep ':5901'
 ```
 
@@ -1570,16 +1633,16 @@ do not change the station's service port merely to resolve a Mac-side conflict.
 ### Complete the VNC bench test
 
 Confirm the virtual desktop starts, input works, closing the viewer removes the
-connection, and TELE1's maintenance timer detects the session. Test the actual
+connection, and TELE's maintenance timer detects the session. Test the actual
 SSH path used for the tunnel, including built-in Tailscale SSH if enabled.
 
 Stop only the standalone VNC test service when finished:
 
 ```bash
-sudo systemctl stop tele1-vnc@tele.service
+sudo systemctl stop tele-vnc@tele.service
 ```
 
-This command is different from stopping `tele1.service`, whose exit behaviour
+This command is different from stopping `tele.service`, whose exit behaviour
 includes poweroff. Do not confuse the two units.
 
 ## Set up Starlink diagnostics
@@ -1635,12 +1698,12 @@ Read it completely before entering commands on any computer that must remain on.
 
 | Unit | Responsibility |
 |---|---|
-| `tele1.service` | Runs the root collector; requests poweroff on normal/error exit through `ExecStopPost` |
-| `tele1-power-guard.timer` | Independent timer requesting shutdown four hours after boot |
-| `tele1-poweroff.service` | Issues the emergency poweroff request |
-| `tele1-vnc@tele.service` | Private virtual desktop, started only when requested or explicitly bench-tested |
+| `tele.service` | Runs the root collector; requests poweroff on normal/error exit through `ExecStopPost` |
+| `tele-power-guard.timer` | Independent timer requesting shutdown four hours after boot |
+| `tele-poweroff.service` | Issues the emergency poweroff request |
+| `tele-vnc@tele.service` | Private virtual desktop, started only when requested or explicitly bench-tested |
 
-Both the collector and emergency timer check for `/etc/tele1/FIELD_ENABLED`
+Both the collector and emergency timer check for `/etc/tele/FIELD_ENABLED`
 before starting. Leave this file absent while setting up the computer; removing
 it later does not stop a service or timer that is already running.
 
@@ -1648,15 +1711,15 @@ it later does not stop a service or timer that is already running.
 
 ```bash
 sudo install -o root -g root -m 0644 \
-  /opt/tele1/current/systemd/tele1.service \
-  /opt/tele1/current/systemd/tele1-power-guard.timer \
-  /opt/tele1/current/systemd/tele1-poweroff.service \
+  /opt/tele/current/systemd/tele.service \
+  /opt/tele/current/systemd/tele-power-guard.timer \
+  /opt/tele/current/systemd/tele-poweroff.service \
   /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemd-analyze verify \
-  /etc/systemd/system/tele1.service \
-  /etc/systemd/system/tele1-power-guard.timer \
-  /etc/systemd/system/tele1-poweroff.service
+  /etc/systemd/system/tele.service \
+  /etc/systemd/system/tele-power-guard.timer \
+  /etc/systemd/system/tele-poweroff.service
 ```
 
 Verify the installed executable paths now exist and the native binary is present.
@@ -1665,11 +1728,11 @@ Syntax validation alone does not prove service timing or physical poweroff.
 Inspect without starting the units:
 
 ```bash
-sudo systemctl cat tele1.service
-sudo systemctl cat tele1-power-guard.timer
-sudo systemctl cat tele1-poweroff.service
-sudo systemctl is-enabled tele1.service tele1-power-guard.timer
-sudo test ! -e /etc/tele1/FIELD_ENABLED
+sudo systemctl cat tele.service
+sudo systemctl cat tele-power-guard.timer
+sudo systemctl cat tele-poweroff.service
+sudo systemctl is-enabled tele.service tele-power-guard.timer
+sudo test ! -e /etc/tele/FIELD_ENABLED
 ```
 
 An “inactive” or “disabled” state is expected at this point. Do not add `--now`
@@ -1681,7 +1744,7 @@ The default four-hour limit is intentionally local and cannot be disabled by
 downloaded station config. If an authorized administrator changes it, update
 the timer and the collector limit together and repeat the power tests.
 
-Use `sudo systemctl edit tele1-power-guard.timer` and enter, for example:
+Use `sudo systemctl edit tele-power-guard.timer` and enter, for example:
 
 ```ini
 [Timer]
@@ -1689,7 +1752,7 @@ OnBootSec=
 OnBootSec=4h
 ```
 
-Then use `sudo systemctl edit tele1.service`:
+Then use `sudo systemctl edit tele.service`:
 
 ```ini
 [Service]
@@ -1707,7 +1770,7 @@ deliberate fresh boot rather than arming it late during a long bench session.
 ### Check for duplicate startup jobs
 
 Make sure only one job can start the collector. Check cron, systemd and desktop
-autostart entries, and disable any duplicate TELE1 launchers without changing
+autostart entries, and disable any duplicate TELE launchers without changing
 unrelated jobs.
 
 ```bash
@@ -1717,7 +1780,7 @@ systemctl list-unit-files | grep -i tele
 sudo ls -la /home/tele/.config/autostart/
 ```
 
-If `/home/tele/.config/autostart/tele1.desktop` exists, check what it starts.
+If `/home/tele/.config/autostart/tele.desktop` exists, check what it starts.
 It should not launch a second collector alongside the system service.
 
 The root-run service does not need a passwordless poweroff rule for the `tele`
@@ -1741,8 +1804,9 @@ The checklist below covers the tests needed before deployment.
 - [ ] Adjacent-day and combined exports agree on sample coverage and native paths.
 - [ ] Midnight/time-correction behaviour understood.
 - [ ] No destructive recorder command is in the procedure.
-- [ ] 43 local tests and static checks pass on the selected software version.
-- [ ] Rclone uses `/etc/tele1/rclone.conf`, not an accidental user configuration.
+- [ ] All local tests and static checks pass on the selected software version.
+- [ ] Local and Dropbox `config.txt` both contain the intended matching `station`.
+- [ ] Rclone uses `/etc/tele/rclone.conf`, not an accidental user configuration.
 - [ ] Test Dropbox upload and explicit hash verification succeed.
 - [ ] Private credentials and station identity have correct ownership/modes.
 - [ ] Test email reaches the intended recipient.
@@ -1776,17 +1840,17 @@ field values and verify them before deployment.
 
 ### Explicit field-mode activation
 
-The following steps intentionally arrange for the computer to run TELE1 and
+The following steps intentionally arrange for the computer to run TELE and
 power off after a subsequent boot. They are not part of merely checking out
 the repository, installing dependencies or viewing the code.
 
 Only on the intended station, after completing the checks:
 
 ```bash
-sudo touch /etc/tele1/FIELD_ENABLED
-sudo chown root:root /etc/tele1/FIELD_ENABLED
-sudo chmod 0600 /etc/tele1/FIELD_ENABLED
-sudo systemctl enable tele1-power-guard.timer tele1.service
+sudo touch /etc/tele/FIELD_ENABLED
+sudo chown root:root /etc/tele/FIELD_ENABLED
+sudo chmod 0600 /etc/tele/FIELD_ENABLED
+sudo systemctl enable tele-power-guard.timer tele.service
 ```
 
 Save all work and choose a deliberate reboot time. The next command disconnects
@@ -1796,7 +1860,7 @@ current sessions; the machine is expected to collect and later shut down:
 sudo systemctl reboot
 ```
 
-Do not start `tele1.sh` manually in place of the field service. It deliberately
+Do not start `tele.sh` manually in place of the field service. It deliberately
 requires the service context and an active emergency timer.
 
 ### Observe the run
@@ -1804,18 +1868,18 @@ requires the service context and an active emergency timer.
 During a requested maintenance window:
 
 ```bash
-sudo journalctl -u tele1.service -b
-sudo systemctl status tele1.service
-sudo systemctl list-timers --all | grep tele1
-sudo ls -la /var/lib/tele1/station01/
-sudo ls -la /var/log/tele1/station01/
+sudo journalctl -u tele.service -b
+sudo systemctl status tele.service
+sudo systemctl list-timers --all | grep tele
+sudo ls -la /var/lib/tele/station01/
+sudo ls -la /var/log/tele/station01/
 ```
 
 Verify the station's Dropbox contents, run status and email separately.
 Then physically observe poweroff and Starlink relay release, and verify the
 next BIOS wake cycle.
 
-`systemctl stop tele1.service` is not a harmless “pause”: its exit path requests
+`systemctl stop tele.service` is not a harmless “pause”: its exit path requests
 poweroff. Similarly, disabling a unit without stopping it does not cancel an
 already running instance; plan maintenance/disarming from a controlled state.
 
@@ -1827,9 +1891,9 @@ Do not interpret removing the marker alone as cancelling an already armed timer.
 
 ```bash
 # Only in a controlled maintenance state, with no active collection:
-sudo rm -f /etc/tele1/FIELD_ENABLED
-sudo systemctl disable tele1.service tele1-power-guard.timer
-sudo systemctl stop tele1-power-guard.timer
+sudo rm -f /etc/tele/FIELD_ENABLED
+sudo systemctl disable tele.service tele-power-guard.timer
+sudo systemctl stop tele-power-guard.timer
 ```
 
 Without the guard, the computer and Starlink may remain powered. Do not leave
@@ -1914,6 +1978,10 @@ week-long battery load.
 
 ## Updates, rollback and station replication
 
+If moving an existing installation to the TELE paths and unit names, read
+[the rename checklist](docs/RENAME.md) first. Do not remove pending data or leave
+two different collection services and power timers enabled.
+
 ### Version policy
 
 Use a reviewed Git tag or exact commit that passed the relevant tests.
@@ -1926,19 +1994,19 @@ vendor/dependency versions and the test results for each station.
 ### Updating code
 
 Prepare the new release in a new root-owned directory while the collector is
-not running. Test it before changing `/opt/tele1/current`; do not mix some old
-modules with a new `tele1.sh`.
+not running. Test it before changing `/opt/tele/current`; do not mix some old
+modules with a new `tele.sh`.
 
 For an approved release directory already populated and checked, switch the link
 atomically on Ubuntu:
 
 ```bash
 # Replace this with the actual tested release directory.
-NEW_RELEASE='/opt/tele1/releases/APPROVED_VERSION_AND_COMMIT'
-sudo test -x "$NEW_RELEASE/tele1.sh"
-sudo ln -sfn "$NEW_RELEASE" /opt/tele1/current.next
-sudo mv -Tf /opt/tele1/current.next /opt/tele1/current
-readlink -f /opt/tele1/current
+NEW_RELEASE='/opt/tele/releases/APPROVED_VERSION_AND_COMMIT'
+sudo test -x "$NEW_RELEASE/tele.sh"
+sudo ln -sfn "$NEW_RELEASE" /opt/tele/current.next
+sudo mv -Tf /opt/tele/current.next /opt/tele/current
+readlink -f /opt/tele/current
 ```
 
 Stop on any failed check rather than continuing the block blindly.
@@ -1947,7 +2015,7 @@ do not assume switching a source symlink updates already installed unit files.
 
 ### Rollback
 
-Roll back only to a known compatible code release. Preserve `/etc/tele1`,
+Roll back only to a known compatible code release. Preserve `/etc/tele`,
 pending data, verified receipts and recorder identity instead of replacing the
 whole application/state tree with an old backup.
 
@@ -1969,15 +2037,15 @@ behaviour. A passed test on station01 is not sufficient evidence for station02.
 
 ## Troubleshooting by symptom
 
-### TELE1 does not start
+### TELE does not start
 
 Inspect the service journal, activation marker and installed files:
 
 ```bash
-sudo journalctl -u tele1.service -b
-sudo systemctl cat tele1.service
-sudo ls -l /etc/tele1/FIELD_ENABLED /opt/tele1/current/tele1.sh
-sudo bash -n /opt/tele1/current/tele1.sh
+sudo journalctl -u tele.service -b
+sudo systemctl cat tele.service
+sudo ls -l /etc/tele/FIELD_ENABLED /opt/tele/current/tele.sh
+sudo bash -n /opt/tele/current/tele.sh
 ```
 
 Expected causes include a deliberately absent activation marker, missing code,
@@ -2053,9 +2121,9 @@ guard or upload the shorter file over a previously complete one.
 ### Dropbox authentication, permissions or quota failure
 
 ```bash
-sudo rclone --config /etc/tele1/rclone.conf listremotes
-sudo rclone --config /etc/tele1/rclone.conf lsf \
-  'tele1_dropbox:my_dropbox_path/tele/station01'
+sudo rclone --config /etc/tele/rclone.conf listremotes
+sudo rclone --config /etc/tele/rclone.conf lsf \
+  'tele_dropbox:my_dropbox_path/tele/station01'
 ```
 
 Check the exact account, app scope, remote name, destination, provider quota
@@ -2079,10 +2147,10 @@ missing or changed content once the underlying fault is understood.
 ### Disk space runs low
 
 ```bash
-df -h /var/lib/tele1 /var/log/tele1
-sudo du -sh /var/lib/tele1/station01/pending
-sudo du -sh /var/lib/tele1/station01/last-verified
-sudo du -sh /var/log/tele1/station01
+df -h /var/lib/tele /var/log/tele
+sudo du -sh /var/lib/tele/station01/pending
+sudo du -sh /var/lib/tele/station01/last-verified
+sudo du -sh /var/log/tele/station01
 ```
 
 Find out whether space is held by pending exports, incomplete scratch, logs,
@@ -2134,10 +2202,10 @@ whether the station is simply powered off as designed.
 ### VNC is unavailable
 
 ```bash
-sudo systemctl status tele1-vnc@tele.service
-sudo journalctl -u tele1-vnc@tele.service -b
+sudo systemctl status tele-vnc@tele.service
+sudo journalctl -u tele-vnc@tele.service -b
 sudo ss -ltnp | grep ':5901'
-sudo stat -c '%a %U %G %n' /etc/tele1/vnc /etc/tele1/vnc/tele.passwd
+sudo stat -c '%a %U %G %n' /etc/tele/vnc /etc/tele/vnc/tele.passwd
 ```
 
 Check the dedicated password file, parent-directory traversal, virtual-desktop
@@ -2149,9 +2217,9 @@ server settings; never fix a tunnel problem by exposing VNC publicly.
 Inspect the collector's exit behaviour and the independent timer:
 
 ```bash
-sudo systemctl status tele1-power-guard.timer
-sudo systemctl list-timers --all | grep tele1
-sudo journalctl -u tele1.service -u tele1-poweroff.service -b
+sudo systemctl status tele-power-guard.timer
+sudo systemctl list-timers --all | grep tele
+sudo journalctl -u tele.service -u tele-poweroff.service -b
 ```
 
 During an explicit bench test with all work saved, direct poweroff can be tested:

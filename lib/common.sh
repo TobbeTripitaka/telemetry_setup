@@ -27,19 +27,25 @@ check_private_file() {
     [[ $owner == "$EUID" ]] && (( (8#$mode & 077) == 0 ))
 }
 
-init_workspace() {
-    STATE_ROOT="/var/lib/tele1/$STATION_NAME"
+set_station_paths() {
+    valid_station "${STATION_NAME:-}" ||
+        { die "Refusing to build paths without a valid station label"; return 1; }
+    STATE_ROOT="/var/lib/tele/$STATION_NAME"
     SPOOL="$STATE_ROOT/pending"
     VERIFIED="$STATE_ROOT/verified"
     OWNERS="$STATE_ROOT/owners"
     LAST_BATCH="$STATE_ROOT/last-verified"
-    LOG_ROOT="/var/log/tele1/$STATION_NAME"
+    LOG_ROOT="/var/log/tele/$STATION_NAME"
+    REMOTE_BASE="$RCLONE_REMOTE:${DROPBOX_ROOT:+$DROPBOX_ROOT/}tele/$STATION_NAME"
+    REMOTE_DATA="$REMOTE_BASE/pegasus_harvester"
+}
+
+init_workspace() {
+    set_station_paths || return 1
     mkdir -p -- "$SPOOL" "$VERIFIED" "$OWNERS" "$LOG_ROOT"
     RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
     LOG_FILE="$LOG_ROOT/$RUN_ID.log"
     touch "$LOG_FILE"
-    REMOTE_BASE="$RCLONE_REMOTE:$DROPBOX_ROOT/tele/$STATION_NAME"
-    REMOTE_DATA="$REMOTE_BASE/pegasus_harvester"
 }
 
 check_dependencies() {

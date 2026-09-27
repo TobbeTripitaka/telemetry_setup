@@ -1,4 +1,6 @@
 # Literal key=value data. No shell expansion, inline comments or commands.
+# Install locally as /etc/tele/config.txt; choose a unique station label.
+station=station01
 EXECUTE=auto
 HARVEST_MODE=incremental
 MAINTENANCE_IDLE_SECONDS=600

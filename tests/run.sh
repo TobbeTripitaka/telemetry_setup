@@ -4,7 +4,7 @@ set -Eeuo pipefail
 export TZ=UTC LC_ALL=C
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=/dev/null
-source "$ROOT/tele1.sh"
+source "$ROOT/tele.sh"
 BASE=$(mktemp -d)
 trap 'rm -rf -- "$BASE"' EXIT
 PASS=0 FAIL=0
@@ -19,6 +19,7 @@ setup_test() {
     mkdir -p "$SPOOL" "$VERIFIED" "$OWNERS" "$LOG_ROOT" "$REMOTE_DATA"
     touch "$LOG_FILE"
     runtime_defaults
+    station=test-station STATION_NAME=test-station
     NETWORK_TIMEOUT_SECONDS=10
     PEGASUS_BIN="$ROOT/tests/fake-harvester.sh" DEVICE=/dev/never-used CLOCK_PRESENT=no
     HARVEST_USED_SECONDS=0 FAULT=none
@@ -67,11 +68,107 @@ test_config_requires_request_id() {
     expect_failure validate_runtime
 }
 test_config_atomic_rejection() {
-    printf 'EXECUTE=auto\n' >"$STATE_ROOT/config.txt"
-    printf 'EXECUTE=ssh\nUNKNOWN=bad\n' >"$REMOTE_BASE/config.txt"
+    printf 'station=test-station\nEXECUTE=auto\n' >"$STATE_ROOT/config.txt"
+    printf 'station=test-station\nEXECUTE=ssh\nUNKNOWN=bad\n' >"$REMOTE_BASE/config.txt"
     RCLONE_REMOTE=unused
     load_runtime_config
-    [[ $EXECUTE == auto && $(<"$STATE_ROOT/config.txt") == EXECUTE=auto ]]
+    [[ $EXECUTE == auto && $(<"$STATE_ROOT/config.txt") == $'station=test-station\nEXECUTE=auto' ]]
+}
+
+test_local_station_required() {
+    printf 'EXECUTE=auto\n' >"$STATE_ROOT/local.conf"
+    chmod 600 "$STATE_ROOT/local.conf"
+    expect_failure load_local_config "$STATE_ROOT/local.conf"
+}
+test_local_config_requires_private_permissions() {
+    printf 'station=field01\n' >"$STATE_ROOT/local.conf"
+    chmod 644 "$STATE_ROOT/local.conf"
+    expect_failure load_local_config "$STATE_ROOT/local.conf"
+}
+test_station_sets_all_paths() {
+    printf 'station=FIELD-01\nEXECUTE=ssh\n' >"$STATE_ROOT/local.conf"
+    chmod 600 "$STATE_ROOT/local.conf"
+    load_local_config "$STATE_ROOT/local.conf"
+    RCLONE_REMOTE=tele_dropbox DROPBOX_ROOT=my_dropbox_path
+    set_station_paths
+    [[ $STATION_NAME == FIELD-01 && $EXECUTE == ssh &&
+       $REMOTE_BASE == tele_dropbox:my_dropbox_path/tele/FIELD-01 &&
+       $REMOTE_DATA == tele_dropbox:my_dropbox_path/tele/FIELD-01/pegasus_harvester &&
+       $STATE_ROOT == /var/lib/tele/FIELD-01 && $LOG_ROOT == /var/log/tele/FIELD-01 ]]
+}
+test_station_at_remote_root() {
+    STATION_NAME=field01 RCLONE_REMOTE=tele_dropbox DROPBOX_ROOT=''
+    set_station_paths
+    [[ $REMOTE_BASE == tele_dropbox:tele/field01 ]]
+}
+test_station_namespaces_do_not_mix() {
+    RCLONE_REMOTE=tele_dropbox DROPBOX_ROOT=my_dropbox_path STATION_NAME=field01
+    set_station_paths
+    local old_state=$STATE_ROOT old_remote=$REMOTE_BASE
+    STATION_NAME=field02
+    set_station_paths
+    [[ $STATE_ROOT != "$old_state" && $REMOTE_BASE != "$old_remote" &&
+       $SPOOL == /var/lib/tele/field02/pending && $VERIFIED == /var/lib/tele/field02/verified ]]
+}
+test_station_rejects_unsafe_labels() {
+    local value
+    for value in '' . .. ../other 'bad/name' 'bad\name' 'has space' '$HOME' \
+                 '$(touch hacked)' '-option' 'remote:path'; do
+        expect_failure runtime_key station "$value"
+    done
+    expect_failure runtime_key station "$(printf '%065d' 0)"
+}
+test_station_duplicate_rejected() {
+    printf 'station=field01\nstation=field02\n' >"$STATE_ROOT/config"
+    expect_failure read_kv "$STATE_ROOT/config" runtime_key
+}
+test_station_key_is_lowercase() {
+    printf 'STATION=field01\n' >"$STATE_ROOT/config"
+    expect_failure read_kv "$STATE_ROOT/config" runtime_key
+}
+test_station_is_not_a_node_setting() {
+    expect_failure node_key station field01
+    expect_failure node_key STATION_NAME field01
+}
+test_matching_remote_station_applied() {
+    printf 'station=test-station\nEXECUTE=vnc\n' >"$REMOTE_BASE/config.txt"
+    load_runtime_config
+    [[ $station == test-station && $STATION_NAME == test-station && $EXECUTE == vnc ]]
+}
+test_remote_station_mismatch_preserves_cache_and_paths() {
+    local old_remote=$REMOTE_BASE old_state=$STATE_ROOT
+    printf 'station=test-station\nEXECUTE=ssh\n' >"$STATE_ROOT/config.txt"
+    printf 'station=another-station\nEXECUTE=vnc\n' >"$REMOTE_BASE/config.txt"
+    load_runtime_config
+    [[ $station == test-station && $STATION_NAME == test-station && $EXECUTE == ssh &&
+       $REMOTE_BASE == "$old_remote" && $STATE_ROOT == "$old_state" &&
+       $(<"$STATE_ROOT/config.txt") == $'station=test-station\nEXECUTE=ssh' ]]
+}
+test_remote_missing_station_rejected() {
+    EXECUTE=ssh
+    printf 'EXECUTE=vnc\n' >"$REMOTE_BASE/config.txt"
+    load_runtime_config
+    [[ $EXECUTE == ssh && $station == test-station && ! -f $STATE_ROOT/config.txt ]]
+}
+test_cached_wrong_station_ignored() {
+    EXECUTE=ssh
+    printf 'station=another-station\nEXECUTE=vnc\n' >"$STATE_ROOT/config.txt"
+    load_runtime_config
+    [[ $EXECUTE == ssh && $station == test-station && $STATION_NAME == test-station ]]
+}
+test_node_config_without_station_label() {
+    printf '%s\n' 'RCLONE_REMOTE=tele_dropbox' 'RECORDER_SERIAL=test-recorder' \
+        'RECORDER_DEVICE=/dev/disk/by-id/test-recorder' >"$STATE_ROOT/node.conf"
+    chmod 600 "$STATE_ROOT/node.conf"
+    load_node_config "$STATE_ROOT/node.conf"
+    [[ -z $STATION_NAME && $RCLONE_REMOTE == tele_dropbox ]]
+}
+test_renamed_service_paths() {
+    [[ -x $ROOT/tele.sh && ! -e $ROOT/tele1.sh ]]
+    grep -Fxq 'ExecStart=/opt/tele/current/tele.sh --field' "$ROOT/systemd/tele.service"
+    grep -Fxq 'Environment=TELE_FIELD_SERVICE=1' "$ROOT/systemd/tele.service"
+    grep -Fxq 'Requires=tele-power-guard.timer' "$ROOT/systemd/tele.service"
+    grep -Fxq 'Unit=tele-poweroff.service' "$ROOT/systemd/tele-power-guard.timer"
 }
 test_success_roundtrip() {
     batch
@@ -261,7 +358,7 @@ test_vnc_detection() {
     remote_session_active
 }
 test_entrypoint_requires_field() {
-    expect_failure bash "$ROOT/tele1.sh"
+    expect_failure bash "$ROOT/tele.sh"
 }
 test_early_notification_failure_is_nonfatal() {
     load_credentials "$STATE_ROOT/nonexistent"

@@ -1,6 +1,6 @@
-# TELE1: remote seismic data collection
+# TELE: remote seismic data collection
 
-TELE1 to collect data from seismic stations where power and internet
+TELE collects data from seismic stations where power and internet
 access are limited. It runs on an Ubuntu edge computer connected to a Nanometrics
 Pegasus recorder and uses Starlink to upload data to Dropbox.
 
@@ -20,7 +20,7 @@ My setup uses a Shuttle SPCEL03, a Starlink Mini and a USB-controlled relay.
 The BIOS wakes the computer once a week. USB 5 V operates the relay, so Starlink
 powers up with the computer and switches off when the computer shuts down.
 
-<img src="img/photo_4.JPG" width="650" alt="TELE1 test setup with the computer, Pegasus recorder and Starlink antenna in the enclosure">
+<img src="img/photo_4.JPG" width="650" alt="TELE test setup with the computer, Pegasus recorder and Starlink antenna in the enclosure">
 
 Test setup. Photo: Tobias Stål.
 
@@ -30,7 +30,7 @@ remote access and testing instructions. Start there if you are building a statio
 
 ## How it works
 
-TELE1 uses Bash to call the native Pegasus Harvester and rclone for Dropbox
+TELE uses Bash to call the native Pegasus Harvester and rclone for Dropbox
 transfers. It exports waveform miniSEED, SOH, legacy SOH and logs without creating
 a large PSF image.
 
@@ -93,12 +93,25 @@ you want to start another request.
 
 ## Station configuration
 
-The station reads its own `config.txt` from Dropbox. Settings are parsed as
-literal values, not executed as shell commands.
+Set the upload label with `station` in `config.txt`. For example,
+`station=station01` sends data to
+`<dropbox_root>/tele/station01/pegasus_harvester/` and logs to
+`<dropbox_root>/tele/station01/tele_logfiles/`.
+
+Keep a private local copy at `/etc/tele/config.txt` so the computer knows which
+Dropbox folder to read at startup. Upload the matching remote copy to
+`<dropbox_root>/tele/station01/config.txt`; its `station` must match the local
+label. This prevents a config copied to the wrong station from redirecting data.
+
+Labels use 1–64 letters, numbers, dots, underscores or hyphens, starting with a
+letter or number. Settings are literal values, not shell commands. The label
+only controls the outer upload/state directories; it does not rename the
+Harvester's native files or change seismic station metadata.
 
 For normal weekly collection:
 
 ```ini
+station=station01
 EXECUTE=auto
 HARVEST_MODE=incremental
 HARVEST_BUDGET_SECONDS=3600
@@ -108,6 +121,7 @@ RETAIN_LAST_BATCH=yes
 To leave time for SSH access after collection:
 
 ```ini
+station=station01
 EXECUTE=ssh
 HARVEST_MODE=incremental
 MAINTENANCE_IDLE_SECONDS=600
@@ -118,6 +132,7 @@ To check the full recorder archive without unnecessarily sending matching
 files again:
 
 ```ini
+station=station01
 EXECUTE=auto
 HARVEST_MODE=reconcile
 REQUEST_ID=full-check-2026-09
@@ -155,7 +170,7 @@ shutdown if Ubuntu or the firmware itself freezes.
 
 ## Testing and deployment
 
-The automated suite has 43 tests covering configuration, acquisition failures,
+The automated suite covers configuration, station isolation, acquisition failures,
 hash verification, retries, retention and maintenance timing. It uses a synthetic
 Harvester and real local rclone file operations, not a real recorder or live Dropbox.
 
@@ -163,7 +178,7 @@ On an Ubuntu development or bench machine with the dependencies installed:
 
 ```bash
 bash tests/run.sh
-shellcheck -S warning -e SC2034 tele1.sh lib/common.sh lib/config.sh \
+shellcheck -S warning -e SC2034 tele.sh lib/common.sh lib/config.sh \
   lib/hardware.sh lib/harvest.sh lib/upload.sh lib/notification.sh \
   lib/remote.sh scripts/*.sh tests/*.sh
 ```
@@ -174,6 +189,10 @@ These tests do not access the recorder, send email or shut down the computer.
 Before field use, check real miniSEED completeness, Dropbox interruption recovery,
 SSH/VNC sessions, BIOS wake-up and the physical USB-relay shutdown. Starting the
 field service is different from running the tests: it can power the computer off.
+
+The entry point is `tele.sh`, with `tele.service` and the `tele-power-guard.timer`.
+Existing installations need their paths, units and local config updated together;
+read the [rename and station-label notes](docs/RENAME.md) before enabling them.
 
 Use a tested release or exact Git commit for each station. Do not automatically
 pull `main` on every wake, and keep credentials, pending data and progress records

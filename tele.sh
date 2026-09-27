@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TELE1 v4 candidate. Only the systemd field service may run this entry point.
+# TELE collector. Only the systemd field service may run this entry point.
 set -Eeuo pipefail
 umask 077
 export TZ=UTC LC_ALL=C
@@ -29,21 +29,21 @@ main() {
     fi
     [[ $EUID == 0 ]] || die "Field service requires root"
     # The timer is armed BEFORE any configuration, credentials or dependencies.
-    systemctl is-active --quiet tele1-power-guard.timer ||
+    systemctl is-active --quiet tele-power-guard.timer ||
         die "Independent systemd shutdown timer is not active"
-    [[ ${TELE1_FIELD_SERVICE:-} == 1 ]] || die "Not started by the field service"
-    exec 9>/run/lock/tele1.lock
+    [[ ${TELE_FIELD_SERVICE:-} == 1 ]] || die "Not started by the field service"
+    exec 9>/run/lock/tele.lock
     flock -n 9 || die "Another collection run holds the lock"
 
-    load_node_config /etc/tele1/node.conf
+    load_node_config /etc/tele/node.conf
+    load_local_config /etc/tele/config.txt
     init_workspace
-    runtime_defaults
     NOTIFIED=0
     trap on_exit EXIT
     trap 'exit 143' TERM
     trap 'exit 130' INT
-    log "TELE1 $(<"$SCRIPT_DIR/VERSION") station=$STATION_NAME"
-    load_credentials /etc/tele1/credentials.txt
+    log "TELE $(<"$SCRIPT_DIR/VERSION") station=$STATION_NAME"
+    load_credentials /etc/tele/credentials.txt
     check_dependencies
     load_runtime_config
     # Failure to load email does not prevent data recovery.

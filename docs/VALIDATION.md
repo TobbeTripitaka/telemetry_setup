@@ -1,4 +1,4 @@
-# TELE1 v4 validation and field-release gates
+# TELE v4 validation and field-release gates
 
 Local tests cannot establish that the vendor Harvester exports complete scientific
 data or that the Shuttle powers off reliably. Treat this checklist as a release
@@ -15,6 +15,11 @@ Covered cases include:
 - **Configuration:** no execution of injected shell, duplicate/unknown key
   rejection, hard bounds, date validation, request IDs, and rejection of a
   partially valid remote config without corrupting the cached one.
+- **Station paths:** required lowercase `station` in local config, safe label
+  validation, isolated local/remote namespaces, and rejection of missing or
+  mismatched remote/cached station labels without redirecting uploads.
+- **Project naming:** renamed entry point remains executable and systemd
+  collector/timer references agree with the TELE paths.
 - **Acquisition:** complete exports, native errors despite status output,
   timeout, low disk reserve, missing optional clock volume, union of SOH/log/data
   bounds, exact command arguments, and no custom `-p`.

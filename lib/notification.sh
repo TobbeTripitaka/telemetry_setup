@@ -43,7 +43,7 @@ send_notification() {
     printf 'user = "%s:%s"\n' "$from" "$password" >"$auth"
     pending=$(find "$SPOOL" -mindepth 1 -maxdepth 1 -type d -printf '.\n' | wc -l)
     {
-        printf 'From: %s\r\nTo: %s\r\nSubject: TELE1 %s %s\r\n' "$EMAIL_FROM" "$EMAIL_TO" "$STATION_NAME" "$status"
+        printf 'From: %s\r\nTo: %s\r\nSubject: TELE %s %s\r\n' "$EMAIL_FROM" "$EMAIL_TO" "$STATION_NAME" "$status"
         printf 'MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'
         printf 'Station: %s\nRun: %s\nStatus: %s\nMode: %s\nPending/incomplete batches: %s\n' \
             "$STATION_NAME" "$RUN_ID" "$status" "$HARVEST_MODE" "$pending"

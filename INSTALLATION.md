@@ -9,7 +9,7 @@ This guide brings together the hardware, suppliers, photographs and software
 setup I use. I've included the practical details so that another station can
 be built without having to work out the same things again.
 
-**Updated:** 27 September 2026. The software covered here is `4.0.0-alpha.1`.
+**Updated:** 27 September 2026. The software covered here is `4.0.1`.
 The exact code revision used for testing is listed in the installation section.
 
 > **Testing is still in progress.** Please contact me before using this update

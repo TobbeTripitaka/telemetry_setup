@@ -1,7 +1,7 @@
 # TELE1: remote seismic data collection
 
-I built TELE1 to collect data from seismic stations where power and internet
-access are limited. It runs on an Ubuntu computer connected to a Nanometrics
+TELE1 to collect data from seismic stations where power and internet
+access are limited. It runs on an Ubuntu edge computer connected to a Nanometrics
 Pegasus recorder and uses Starlink to upload data to Dropbox.
 
 The idea is simple: wake the computer, collect and upload the data, send a status
@@ -195,4 +195,4 @@ If you build a station or find something that can be improved, please get in
 touch or open an issue in this repository. I would like to keep the setup
 practical, easy to understand and reliable enough to leave in the field.
 
-Software: `4.0.0-alpha.1`. Updated: 27 September 2026.
+Software: `4.0.1`. Updated: 27 September 2026.

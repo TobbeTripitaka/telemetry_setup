@@ -28,6 +28,29 @@ The full [installation and field deployment guide](INSTALLATION.md) includes
 the hardware choices, supplier links, photographs, Ubuntu setup, credentials,
 remote access and testing instructions. Start there if you are building a station.
 
+## Where to start
+
+I recommend working through a new station in this order. Keep automatic field
+operation disabled until the individual tests pass.
+
+| Stage | What to do | Detailed instructions |
+|---|---|---|
+| Hardware | Assemble the computer, recorder, relay and Starlink; check poweroff and BIOS wake-up | [Hardware and enclosure](INSTALLATION.md#hardware-and-enclosure) |
+| Ubuntu and software | Install dependencies, find the native Harvester and identify the correct recorder disk | [Ubuntu setup](INSTALLATION.md#install-and-prepare-ubuntu) |
+| Accounts | Choose the project Dropbox identity and create a Gmail app password for email | [Dropbox accounts](INSTALLATION.md#choose-the-upload-account), [Gmail app password](INSTALLATION.md#gmail-app-password-setup) |
+| Configuration | Set local hardware details and matching local/remote `station` labels | [Configuration file map](INSTALLATION.md#configuration-file-map) |
+| Bench tests | Check a real export, a small verified upload, email and remote access separately | [First-harvest checks](INSTALLATION.md#check-the-first-export-before-uploading), [Bench testing](INSTALLATION.md#bench-testing-and-field-activation) |
+| Field operation | Review the power deadlines, enable the services and observe a full wake/shutdown cycle | [Field activation](INSTALLATION.md#explicit-field-mode-activation) |
+
+Command blocks in the guide identify the computer or session where they run.
+The Mac is useful for Git, browser authorization and SSH; Ubuntu runs the
+recorder commands and the field services.
+
+There are three different tools involved: **Git** updates source code from
+GitHub, **rclone** transfers data to Dropbox, and **rsync** is not used by TELE
+for Dropbox authentication or uploads. Pulling the repository does not install
+the software or update an already installed station.
+
 ## How it works
 
 TELE uses Bash to call the native Pegasus Harvester and rclone for Dropbox
@@ -74,6 +97,17 @@ files with `-d=24` and does not replace the native path pattern with `-p`.
 There is no recorder-erasure command or Dropbox deletion in the collection
 workflow. Native SOH/log naming and files crossing day boundaries still need
 checking with the actual recorder before deployment.
+
+For shared/team Dropbox storage, authorize the account that has accepted the
+invitation and has permission to add files. I recommend a project-owned uploader
+account rather than leaving a field computer tied to a personal account.
+
+**Team-folder limitation:** TELE's path parser currently strips a leading `/`
+and rejects spaces in `DROPBOX_ROOT`. Those can matter for Dropbox team paths;
+this documentation update does not fix that code issue. Follow the
+[destination checks and limitation notice](INSTALLATION.md#dropbox-team-folder-limitation-in-tele)
+before using a team folder, rather than trying a full collection against an
+uncertain destination.
 
 ## Collection modes
 
@@ -146,6 +180,12 @@ Passwords, Dropbox tokens, device paths and executable paths do not belong in
 the Dropbox configuration. Private credentials and local station identity are
 kept separately on the computer.
 
+For email, `EMAIL_PASSWORD` means a **Gmail app password**, not the normal Google
+password or a two-step verification code. Follow the
+[app-password walkthrough](INSTALLATION.md#gmail-app-password-setup) and the
+[credential/password-change notes](INSTALLATION.md#which-password-or-token-goes-where)
+before entering account details on the station.
+
 ## Power and remote access
 
 Battery protection is important here. A failed upload or stuck process must not
@@ -177,6 +217,7 @@ Harvester and real local rclone file operations, not a real recorder or live Dro
 On an Ubuntu development or bench machine with the dependencies installed:
 
 ```bash
+# Run on: Ubuntu bench/development machine, inside the source checkout.
 bash tests/run.sh
 shellcheck -S warning -e SC2034 tele.sh lib/common.sh lib/config.sh \
   lib/hardware.sh lib/harvest.sh lib/upload.sh lib/notification.sh \
@@ -198,6 +239,11 @@ Use a tested release or exact Git commit for each station. Do not automatically
 pull `main` on every wake, and keep credentials, pending data and progress records
 outside the application checkout.
 
+If updating an existing checkout, check for local edits before pulling.
+The [update and recovery instructions](INSTALLATION.md#pulling-updates-to-your-source-checkout)
+explain the difference between updating Git, installing a release and changing
+the upload destination.
+
 ## Documentation and next steps
 
 - **[Installation guide](INSTALLATION.md):** hardware, photos, suppliers and the
@@ -214,4 +260,4 @@ If you build a station or find something that can be improved, please get in
 touch or open an issue in this repository. I would like to keep the setup
 practical, easy to understand and reliable enough to leave in the field.
 
-Software: `4.0.1`. Updated: 27 September 2026.
+Software: `4.0.1`. Documentation updated: 29 September 2026.

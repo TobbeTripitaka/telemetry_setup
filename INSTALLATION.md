@@ -9,8 +9,8 @@ This guide brings together the hardware, suppliers, photographs and software
 setup I use. I've included the practical details so that another station can
 be built without having to work out the same things again.
 
-**Updated:** 27 September 2026. The software covered here is `4.0.1`.
-The exact code revision used for testing is listed in the installation section.
+**Updated:** 29 September 2026. The software covered here is `4.0.1`.
+Record the exact code revision used for testing as described in the installation section.
 
 > **Testing is still in progress.** Please contact me before using this update
 > at an unattended field site. The automated tests pass, but the full setup
@@ -22,10 +22,12 @@ The exact code revision used for testing is listed in the installation section.
 
 ## Contents
 
+- [Before running commands](#before-running-commands)
 - [About TELE](#about-tele)
 - [Hardware and enclosure](#hardware-and-enclosure)
 - [Assembly, cabling and power checks](#assembly-cabling-and-power-checks)
 - [Station details](#station-details)
+- [Configuration file map](#configuration-file-map)
 - [Install and prepare Ubuntu](#install-and-prepare-ubuntu)
 - [Configure BIOS wake-up and shutdown behaviour](#configure-bios-wake-up-and-shutdown-behaviour)
 - [Install Ubuntu dependencies](#install-ubuntu-dependencies)
@@ -50,6 +52,63 @@ The exact code revision used for testing is listed in the installation section.
 Set up and test a new station on the bench, with reliable power and physical
 access to the computer. If you are changing a station that is already deployed,
 read the shutdown and recovery sections first.
+
+## Before running commands
+
+The setup uses several computers and websites. I have labelled the command
+blocks so that a command meant for Ubuntu is not accidentally run on the Mac,
+or a setup command is mistaken for a harmless inspection command.
+
+| Location | What happens there |
+|---|---|
+| Ubuntu station | Package installation, recorder access, protected configuration and systemd |
+| Mac | Source-code work, browser-assisted authorization, SSH and VNC client |
+| SSH session | A terminal connected to Ubuntu; commands run on the station, not on the Mac |
+| Google website | Create the station's Gmail app password |
+| Dropbox website | Accept invitations, check the account and folder permissions, authorize rclone |
+| BIOS | Configure and physically test wake-up and off-state USB power |
+
+### Read a command block before pasting it
+
+- **Prompts:** do not copy terminal prompt text such as `tele@station:~$`.
+  Copy only the commands; lines beginning with `#` are explanatory comments.
+- **Examples:** replace values such as `station01`, `my_dropbox_path`,
+  `REPLACE_WITH_WHOLE_DISK_ID` and `ACTUAL-RUN.log` with the intended values.
+  Do not type angle-bracket placeholders as shell redirection.
+- **File contents:** blocks marked `ini` are settings to put in the named file
+  with an editor, not shell commands. Typing `station=station01` in a terminal
+  does not save `/etc/tele/config.txt`.
+- **Working directory:** `pwd` shows where you are. `./harvester` means a file
+  in that directory; it does not search the computer for the installed Harvester.
+- **Variables:** values such as `HARVESTER`, `RECORDER_DEVICE`, `REMOTE_BASE`
+  and `TELE_COMMIT` exist only in the shell where you set them. Re-establish
+  them if you open another terminal or reconnect.
+- **Privileges:** `sudo` is used where the Ubuntu operation needs administrator
+  access. It does not make a command find the right file or choose the correct disk.
+- **Failures:** stop at an error and check the cause before proceeding. Do not
+  use `format`, `erase-volume`, `git reset --hard` or a broad deletion as a shortcut.
+- **Secrets:** never paste passwords, OAuth tokens or private configuration into
+  GitHub, support messages, screenshots or an assistant conversation.
+
+Commands that list files or inspect status are different from commands that
+upload, send email, install packages, restart services or power off. The latter
+are marked in their sections; read the warning before running them.
+
+### A quick terminal check
+
+Use this on the terminal you are about to work in. Confirm the hostname and
+current directory before editing a station's settings.
+
+```bash
+# Run on: the terminal you intend to use, Mac or Ubuntu.
+hostname
+whoami
+pwd
+```
+
+Git manages the source repository; rclone manages Dropbox access and transfers.
+TELE does not use rsync to authenticate to Dropbox, and neither a Dropbox
+invitation URL nor a GitHub URL is an rclone destination path.
 
 ## About TELE
 
@@ -342,6 +401,52 @@ The main guide uses `station01`, `tele_dropbox`, `my_dropbox_path` and the
 `tele` Linux account as examples. Replace these deliberately and consistently;
 do not use one station's Dropbox prefix for multiple independent writers.
 
+## Configuration file map
+
+The files below have different jobs. Do not combine all the settings into one
+runtime file or put private credentials into the Dropbox `config.txt`.
+
+| File | Purpose | Example contents |
+|---|---|---|
+| `/etc/tele/node.conf` | Local hardware and storage connection details | `RCLONE_REMOTE`, `DROPBOX_ROOT`, recorder serial/by-id path, Harvester path |
+| `/etc/tele/config.txt` | Local startup settings and the required upload label | `station`, collection mode, maintenance window |
+| `<root>/tele/<station>/config.txt` in Dropbox | Remotely adjustable operating settings | Same `station` label, mode and timeout settings |
+| `/etc/tele/credentials.txt` | Email credentials only | `EMAIL_FROM`, `EMAIL_TO`, `EMAIL_PASSWORD` |
+| `/etc/tele/rclone.conf` | Dropbox remote definition and OAuth tokens, maintained by rclone | Remote named by `RCLONE_REMOTE` |
+| `/etc/tele/vnc/tele.passwd` | VNC password file generated by `tigervncpasswd` | Not a plain `KEY=value` file |
+| `/var/lib/tele/<station>/config.txt` | Last validated downloaded configuration cache | Managed by TELE, not the main file to edit manually |
+
+The local node, operating-settings, email and rclone files are private root-owned
+files with mode 0600. The VNC file has separate ownership for its service user;
+follow the VNC section rather than making all configuration files world-readable.
+
+### One station from configuration to upload
+
+For the worked example, use `RCLONE_REMOTE=tele_dropbox` and
+`DROPBOX_ROOT=my_dropbox_path` in `node.conf`, and `station=station01` in both
+operating-settings files. The rclone configuration must actually contain the
+remote named `tele_dropbox`.
+
+```text
+/etc/tele/node.conf
+    -> Dropbox remote and root, recorder identity, executable paths
+/etc/tele/config.txt: station=station01
+    -> local state: /var/lib/tele/station01/
+    -> local logs:  /var/log/tele/station01/
+    -> download:    tele_dropbox:my_dropbox_path/tele/station01/config.txt
+                    (the downloaded station must also be station01)
+    -> data:        tele_dropbox:my_dropbox_path/tele/station01/pegasus_harvester/
+    -> run logs:    tele_dropbox:my_dropbox_path/tele/station01/tele_logfiles/
+```
+
+The local label is needed before Dropbox settings can be located. A remote
+file with another label is rejected; changing only that remote label does not
+rename a deployed station.
+
+This example assumes a destination that the current TELE parser supports.
+For a shared/team folder, complete the Dropbox discovery steps and read the
+team-folder limitation below before treating the example as your actual path.
+
 ## Install and prepare Ubuntu
 
 ### Choose and record the operating system
@@ -361,6 +466,7 @@ and keep a way back to the working setup.
 On the Ubuntu station:
 
 ```bash
+# Run on: Ubuntu station.
 cat /etc/os-release
 uname -m
 hostnamectl
@@ -378,6 +484,7 @@ Set the system timezone to UTC and inspect synchronization. All collection-day
 boundaries and example date ranges are UTC, not Hobart local time.
 
 ```bash
+# Run on: Ubuntu station.
 sudo timedatectl set-timezone UTC
 timedatectl status
 date -u
@@ -396,6 +503,7 @@ remote administration and the private VNC desktop.
 For a new `tele` account:
 
 ```bash
+# Run on: Ubuntu station.
 id tele
 # If it does not exist:
 sudo adduser --disabled-password --gecos "TELE Data Collection" tele
@@ -404,6 +512,7 @@ sudo adduser --disabled-password --gecos "TELE Data Collection" tele
 If `tele` also needs administrator access, add it to the `sudo` group:
 
 ```bash
+# Run on: Ubuntu station.
 # Optional: only if tele is intended to be a system administrator.
 sudo usermod -aG sudo tele
 ```
@@ -430,6 +539,7 @@ Perform normal package maintenance on the bench with sufficient power. Do not ru
 a full unattended OS upgrade inside the weekly data-collection script.
 
 ```bash
+# Run on: Ubuntu station.
 sudo apt update
 sudo apt upgrade
 ```
@@ -482,6 +592,7 @@ using an administrative account before enabling the field service.
 ### Core tools
 
 ```bash
+# Run on: Ubuntu station.
 sudo apt install -y \
   bash coreutils findutils util-linux grep sed gawk \
   curl ca-certificates git jq rclone \
@@ -492,6 +603,7 @@ sudo apt install -y \
 Check availability and record versions:
 
 ```bash
+# Run on: Ubuntu station.
 bash --version
 rclone version
 curl --version
@@ -549,6 +661,7 @@ trusted package; authenticity still depends on its trusted source.
 Substitute the actual local filename:
 
 ```bash
+# Run on: Ubuntu station.
 dpkg-deb --info /absolute/path/to/approved-pegasus-harvester.deb
 sha256sum /absolute/path/to/approved-pegasus-harvester.deb
 sudo apt install /absolute/path/to/approved-pegasus-harvester.deb
@@ -560,6 +673,10 @@ upgrade the remote OS while trying to make an unverified binary run.
 
 ### Find the native executable
 
+Use the native executable rather than the GUI launcher. In particular, running
+`sudo ./harvester help` from your home directory will not find a binary installed
+under `/opt`; `sudo` does not change what `./` refers to.
+
 On my test installation, the native executable is here:
 
 ```text
@@ -569,16 +686,23 @@ On my test installation, the native executable is here:
 Find the installed executable rather than assuming all package versions match:
 
 ```bash
+# Run on: Ubuntu station.
 sudo find /opt -type f -name harvester
 ```
 
 Then inspect its own interface:
 
 ```bash
+# Run on: Ubuntu station.
 HARVESTER='/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester'
 "$HARVESTER" version -all
 "$HARVESTER" help
 ```
+
+Expected result: `version -all` prints version information and `help` lists
+commands including `harvest` and `volume-info`. If you get “command not found”,
+check the full filename and permissions; if you get a library-loading error,
+check the vendor package and its Ubuntu compatibility before continuing.
 
 The `/opt/PegasusHarvester/pegasus-harvester` executable is the GUI launcher,
 not the native CLI used here. Keep the vendor's `node_modules` directory:
@@ -594,6 +718,7 @@ Connect the recorder on the bench, then inspect all disks before selecting an
 input. Do not assume `/dev/sdb` will identify Pegasus after every reboot.
 
 ```bash
+# Run on: Ubuntu station.
 lsusb
 lsblk -o NAME,SIZE,TYPE,TRAN,SERIAL,FSTYPE,LABEL,MOUNTPOINTS
 ls -l /dev/disk/by-id/
@@ -610,11 +735,15 @@ This is evidence for the tested recorder layout, not permission to hard-code
 `/dev/sdb` on another boot or computer. The station configuration requires
 a whole-disk `/dev/disk/by-id/...` symlink and the expected disk serial.
 
+The label `PEGASUS` is a useful clue, not enough on its own. Match the whole-disk
+path, type and serial, and keep the Ubuntu system disk out of all recorder commands.
+
 ### Verify the chosen stable path
 
 Replace the placeholder with the actual whole-disk identifier, not a `-part1` link:
 
 ```bash
+# Run on: Ubuntu station.
 RECORDER_DEVICE='/dev/disk/by-id/REPLACE_WITH_WHOLE_DISK_ID'
 readlink -f "$RECORDER_DEVICE"
 lsblk -dn -o NAME,TYPE,TRAN,SERIAL "$RECORDER_DEVICE"
@@ -678,6 +807,7 @@ The Harvester identifies its data volumes as follows:
 For example, after identifying the recorder:
 
 ```bash
+# Run on: Ubuntu station.
 sudo "$HARVESTER" digitizer-info "-i=$RECORDER_DEVICE" -safe
 sudo "$HARVESTER" volume-info "-i=$RECORDER_DEVICE" -id=1 -safe
 sudo "$HARVESTER" volume-info "-i=$RECORDER_DEVICE" -id=2 -safe
@@ -709,11 +839,16 @@ though the native pattern contains a day number.
 
 ### Safe bench export
 
+Start with `volume-info`, not an assumed calendar month. Choose a full UTC day
+inside the range actually available on the connected recorder; a correctly
+formatted date can still describe an interval with no waveform samples.
+
 Choose a full UTC day that actually has data according to `volume-info`.
 The dates below are illustrative; change them for the connected recorder and
 use a fresh local test directory, never the recorder mount or production Dropbox.
 
 ```bash
+# Run on: Ubuntu station.
 START_UTC='2025-06-01 00:00:00 UTC'
 END_UTC='2025-06-02 00:00:00 UTC'
 START_SEC=$(date -u -d "$START_UTC" +%s)
@@ -728,7 +863,8 @@ df -h "$BENCH_OUT"
 When the input identity, dates and free space have been checked:
 
 ```bash
-sudo "$HARVESTER" harvest \
+# Run on: Ubuntu station, on the bench. This exports data and may update recorder harvest history.
+sudo timeout --signal=TERM --kill-after=10 15m "$HARVESTER" harvest \
   "-i=$RECORDER_DEVICE" "-o=$BENCH_OUT" \
   "-l=$LOWER_NS" "-u=$UPPER_NS" \
   -d=24 -safe \
@@ -742,6 +878,7 @@ do not call this command an operation that cannot write anything to the recorder
 Inspect the result:
 
 ```bash
+# Run on: Ubuntu station.
 sudo find "$BENCH_OUT" -type f -printf '%P  %s bytes\n' | head -50
 sudo du -sh "$BENCH_OUT"
 sudo find "$BENCH_OUT" -type f | wc -l
@@ -751,6 +888,37 @@ The output may be root-owned because the native command ran through sudo.
 Verify waveform samples, channels, timestamps and gaps with an independent
 miniSEED reader and a vendor/reference export; a nonzero file count is not
 scientific completeness verification.
+
+The 15-minute limit above is a bench safeguard, not a change to TELE's one-hour
+automated harvesting budget. If the limit is reached, keep the log and treat
+the export as incomplete; do not upload it over a verified daily archive.
+
+### Check the first export before uploading
+
+Look for completion of the individual data, SOH and log operations, not just
+the final “Finished” line. These cases mean different things:
+
+| Result | What to check next |
+|---|---|
+| “Ends before actual data lower time” | Choose an interval inside `volume-info` bounds |
+| Only log files appear | Check whether waveform data exists in the requested interval |
+| Missing clock-status volume 3 | Confirm this is the known optional-volume case for the recorder, not a different read error |
+| Little console output but directory size grows | The export is still making progress; a first-element speed estimate is not useful |
+| Timeout, read error or low space | Keep diagnostics, resolve the cause and repeat into a fresh test directory |
+| Files and successful operation messages | Still check real miniSEED contents, day boundaries and gaps before approving the workflow |
+
+For a quiet manual export, use a second Ubuntu terminal to check its actual
+output directory:
+
+```bash
+# Run on: Ubuntu station, in a second terminal. Replace the example with the actual bench directory.
+sudo du -sh /absolute/path/to/bench-output
+sudo find /absolute/path/to/bench-output -type f | wc -l
+```
+
+Do not unplug the recorder or start another harvester to investigate slow
+progress. Keep test output separate from the production station folder until
+the export and upload checks have both passed.
 
 ### Boundary, overlap and repeated-path checks
 
@@ -786,6 +954,7 @@ Clone the repository onto the bench machine. The commands below create a
 directory named `telemetry_setup`.
 
 ```bash
+# Run on: Ubuntu station.
 mkdir -p "$HOME/projects"
 cd "$HOME/projects"
 git clone https://github.com/TobbeTripitaka/telemetry_setup.git
@@ -798,6 +967,7 @@ use the exact revision that passed the bench checks, not an automatically
 updated branch:
 
 ```bash
+# Run on: Ubuntu station.
 TELE_COMMIT=$(git rev-parse HEAD)
 git checkout --detach "$TELE_COMMIT"
 git rev-parse HEAD
@@ -817,6 +987,7 @@ These tests do not connect to a recorder, Dropbox or SMTP and do not power off
 the computer. They require the local Ubuntu tools installed earlier.
 
 ```bash
+# Run on: Ubuntu station.
 bash tests/run.sh
 shellcheck -S warning -e SC2034 \
   tele.sh lib/common.sh lib/config.sh lib/hardware.sh \
@@ -868,6 +1039,7 @@ release directory; if the chosen path already exists, inspect it and select an
 appropriate new release path.
 
 ```bash
+# Run on: Ubuntu station.
 RELEASE_DIR="/opt/tele/releases/$(cat VERSION)-${TELE_COMMIT:0:7}"
 sudo install -d -m 0755 /opt/tele/releases
 sudo mkdir "$RELEASE_DIR"
@@ -876,6 +1048,7 @@ sudo mkdir "$RELEASE_DIR"
 From the checked-out repository, after confirming the directory is new:
 
 ```bash
+# Run on: Ubuntu station.
 set -o pipefail
 git archive "$TELE_COMMIT" \
   tele.sh VERSION lib scripts systemd config docs tests \
@@ -891,6 +1064,7 @@ archive paths also leave out the repository's stored runtime logs.
 For a new installation only, create the current link:
 
 ```bash
+# Run on: Ubuntu station.
 sudo ln -s "$RELEASE_DIR" /opt/tele/current
 readlink -f /opt/tele/current
 ```
@@ -904,6 +1078,7 @@ Keep private files mode 0600 and root-owned. The top-level directory allows
 traversal so the separately protected VNC subdirectory can be accessed by `tele`.
 
 ```bash
+# Run on: Ubuntu station.
 sudo install -d -o root -g root -m 0755 /etc/tele
 sudo install -d -o root -g root -m 0700 /var/lib/tele /var/log/tele
 ```
@@ -914,12 +1089,122 @@ the identity, authentication, data and power tests have been completed.
 ## Configure Dropbox and rclone
 
 Create or select the station's Dropbox account through [Dropbox](https://www.dropbox.com).
-I suggest using the station's Gmail address if you want to keep its accounts
-together, although the software does not require this.
+I recommend an account owned and managed for the project rather than a personal
+account that happens to have access today. A station Gmail address can be used
+to keep the accounts together, but the Dropbox and email identities do not
+have to be the same.
 
 Rclone uses Dropbox OAuth authorization, not a Dropbox account password in
 TELE's email file. Its configuration contains sensitive token material and must
 remain private ([rclone Dropbox documentation](https://rclone.org/dropbox/)).
+
+### Choose the upload account
+
+For an invited shared/team destination, first decide which account the field
+computer should use. Ask the team administrator to approve a dedicated uploader
+account and confirm any team-membership, licensing or application-policy requirements;
+do not assume a generic service account or free seat is available.
+
+1. Sign into Dropbox with that intended account in the browser.
+2. Accept the invitation and, for a shared folder, use **Join folder** if needed.
+3. Open the intended folder and confirm that this account can add files.
+4. Authorize rclone using that same account, not a personal account already
+   signed into another browser tab.
+5. Test the remote and a small upload before changing an existing station.
+
+Dropbox documents how to [join a shared folder](https://help.dropbox.com/share/add-shared-folder).
+The account needs **Can edit** access to add files; **Can view** does not permit
+uploads ([Dropbox sharing permissions](https://help.dropbox.com/share/set-file-folder-permissions)).
+
+A shared link is not a substitute for folder membership or write permission.
+If authorization or access is blocked by the team's policy, ask the administrator;
+repeating OAuth setup cannot grant permissions the account does not have.
+
+Do not give the station team-administrator credentials merely to make a folder
+visible. Normal uploads should use the approved uploader's own access.
+
+### What the destination setting does not protect
+
+`DROPBOX_ROOT` tells TELE where to work; it is not an account-permission boundary.
+A Dropbox app granted Full Dropbox access can have access beyond the one
+directory selected in TELE ([Dropbox connected-app permissions](https://help.dropbox.com/integrations/third-party-apps)).
+
+For this reason I prefer a project-owned account with only the required shared
+data access and no unrelated personal files. If using a custom Dropbox app,
+rclone's team-folder instructions require Full Dropbox rather than the restricted
+App Folder access type ([rclone Dropbox setup](https://rclone.org/dropbox/)).
+
+After testing a replacement account, retire the old credentials deliberately.
+Revoking an app's access can affect other computers using that account/app, so
+check those connections before disconnecting it; if credentials are compromised,
+revoke them promptly rather than preserving an unsafe connection for convenience.
+
+### Find the folder before configuring TELE
+
+List the configured remotes on Ubuntu first. This shows remote names, not
+passwords; use the name that actually exists rather than assuming the example
+`tele_dropbox` is already configured.
+
+```bash
+# Run on: Ubuntu station. These commands inspect the service's rclone configuration.
+sudo rclone --config /etc/tele/rclone.conf listremotes
+rclone version
+```
+
+After authorizing the intended account, compare these two listings:
+
+```bash
+# Run on: Ubuntu station. Read-only listings; replace tele_dropbox if your remote has another name.
+sudo rclone --config /etc/tele/rclone.conf lsd 'tele_dropbox:'
+sudo rclone --config /etc/tele/rclone.conf lsd 'tele_dropbox:/'
+```
+
+For Dropbox Business, the first addresses the member's personal area, while
+the leading slash in the second addresses the root containing team folders
+([rclone team-folder paths](https://rclone.org/dropbox/)).
+An ordinary joined shared folder may appear in the first listing.
+
+| Destination type | Rclone example | Check before use |
+|---|---|---|
+| Folder in the account's normal area | `tele_dropbox:FieldData` | Correct account and folder |
+| Joined shared folder | `tele_dropbox:ProjectData` | Invitation accepted, folder visible, edit permission |
+| Dropbox Business team folder | `tele_dropbox:/Research Team` | Team-root listing, permitted folder, TELE limitation below |
+
+A path with spaces must be quoted in the shell. For example, this is a direct
+rclone discovery command, not a TELE configuration example:
+
+```bash
+# Run on: Ubuntu station. Read-only rclone team-folder listing; not a supported TELE root configuration yet.
+sudo rclone --config /etc/tele/rclone.conf lsd 'tele_dropbox:/Research Team'
+```
+
+If a shared folder is not mounted in the account, rclone also provides
+`--dropbox-shared-folders`: at the remote root it lists available shared folders,
+and using a particular folder path can mount it. The `root_namespace` setting is
+another advanced option, requiring the correct namespace ID and access
+([rclone shared-folder options](https://rclone.org/dropbox/)).
+Do not guess namespace IDs or use administrator impersonation as a routine shortcut.
+
+### Dropbox team-folder limitation in TELE
+
+**This is an outstanding code issue, not fixed by these documentation changes.**
+The current `DROPBOX_ROOT` validation strips a leading `/` and rejects spaces,
+even when the value is enclosed in quotes.
+
+That means a direct rclone team-folder command can work while the same intended
+destination is not handled correctly by TELE. In particular, stripping a team-root
+slash can change which Dropbox area is addressed; a successful upload to a
+similarly named personal folder would not be the intended result.
+
+Before automated team-folder use, the path handling needs a separate reviewed
+code change and tests covering the exact resulting data, log and config paths.
+A namespace-rooted remote may provide another route, but it must be configured
+and verified explicitly; this guide does not treat it as an already tested workaround.
+
+Until then, use direct read-only rclone discovery and an approved small test
+upload to establish access. Do not start a full automated harvest/upload to
+test a doubtful destination, and do not remove path validation just to suppress
+an error.
 
 ### Choose the remote and destination
 
@@ -963,6 +1248,7 @@ Use distinct station names and prefixes for distinct computers.
 Provision the rclone configuration that the root service will actually use:
 
 ```bash
+# Run on: Ubuntu station.
 sudo rclone --config /etc/tele/rclone.conf config
 ```
 
@@ -976,7 +1262,13 @@ In the wizard:
 6. Complete authorization and confirm the remote.
 7. Quit the wizard and protect the file.
 
+The client ID and client secret are application credentials, not fields for
+your Google or Dropbox login password. If a working remote already exists,
+inspect it rather than blindly replacing it; use a separate test remote when
+authorizing a different account.
+
 ```bash
+# Run on: Ubuntu station.
 sudo chown root:root /etc/tele/rclone.conf
 sudo chmod 0600 /etc/tele/rclone.conf
 sudo stat -c '%a %U %G %n' /etc/tele/rclone.conf
@@ -1000,21 +1292,54 @@ the wizard, authorize Dropbox and return to the terminal
 
 ### Headless authorization using a Mac
 
-Choose the headless option on the Ubuntu station. Run the exact `rclone authorize`
-command printed by its wizard on a browser-equipped computer, then transfer the
-returned token directly into the Ubuntu wizard; matching rclone versions are
-recommended ([rclone remote setup](https://rclone.org/remote_setup/)).
+Keep the Ubuntu configuration wizard open while doing the browser step on the
+Mac. The token is transferred back to that wizard; simply signing into Dropbox
+on the Mac does not configure the edge computer.
 
-For a standard Dropbox remote the command will typically resemble:
+1. **Ubuntu terminal:** run the configuration wizard with the service's explicit
+   configuration file.
+2. **Ubuntu wizard:** select or create the intended Dropbox remote. Answer
+   **No** when asked to use a browser automatically on this headless computer.
+3. **Ubuntu wizard:** leave it waiting at the token prompt and copy the exact
+   `rclone authorize ...` command it prints.
+4. **Mac terminal:** run that command using a browser-equipped rclone installation.
+5. **Mac browser:** check the account identity and authorize the project uploader.
+6. **Mac terminal:** copy the returned token JSON only, not surrounding
+   instructions, shell prompts or log messages.
+7. **Ubuntu wizard:** paste that JSON at the waiting token prompt, confirm the
+   remote and quit the wizard.
+8. **Ubuntu terminal:** check file permissions and list the remote's intended
+   folder before doing any upload.
+
+This is rclone's documented headless flow; matching rclone versions on the two
+computers are recommended ([rclone remote setup](https://rclone.org/remote_setup/)).
+With Homebrew already available on the Mac, install rclone if needed:
 
 ```bash
-# On the Mac, after installing rclone there:
+# Run on: Mac, not Ubuntu. Only install if rclone is not already available.
+brew install rclone
+rclone version
+```
+
+Homebrew is one of the installation methods listed by rclone
+([rclone installation](https://rclone.org/install/)).
+Do not update a deployed station's software mid-run merely to match the Mac;
+choose compatible versions during planned setup.
+
+For a standard remote the authorization command usually resembles this,
+but the exact command printed by the Ubuntu wizard takes precedence:
+
+```bash
+# Run on: Mac. Use the exact authorize command printed by the Ubuntu wizard.
 rclone authorize dropbox
 ```
 
-If the wizard prints additional encoded parameters for a custom app, use its
-exact command instead. Treat the resulting JSON/token as a password: do not
-paste it into GitHub issues, logs, this guide, email or an assistant conversation.
+If the browser opens your personal Dropbox account, stop and switch to the
+intended project account before granting access. Use a separate browser profile
+or sign-in session if that makes the choice clearer.
+
+Treat the returned JSON as a password. Paste it directly into the Ubuntu wizard,
+not into GitHub, email, a support message or an assistant conversation.
 
 An alternative is to create the remote in a dedicated configuration file on the
 Mac and securely transfer that file to `/etc/tele/rclone.conf`, then set its
@@ -1022,11 +1347,39 @@ owner and permissions. Do not copy a general-purpose configuration containing
 unrelated cloud credentials onto the field station
 ([rclone configuration transfer](https://rclone.org/remote_setup/)).
 
-### Non-destructive connectivity check
+### Check the result and reconnect only when needed
 
-Use a separate Dropbox test prefix while setting up the station:
+After the wizard completes, the intended remote name should appear in the
+service configuration:
 
 ```bash
+# Run on: Ubuntu station. This lists names without printing token contents.
+sudo rclone --config /etc/tele/rclone.conf listremotes
+```
+
+If the remote name is missing, check which configuration file and Linux user
+were used. A successful Mac authorization is not proof that the Ubuntu token
+was pasted and saved successfully.
+
+If a previously working authorization has actually been revoked, the documented
+reconnect command starts OAuth again ([rclone reconnect](https://rclone.org/commands/rclone_config_reconnect/)):
+
+```bash
+# Run on: Ubuntu station, only when intentionally reauthorizing this remote.
+sudo rclone --config /etc/tele/rclone.conf config reconnect tele_dropbox:
+```
+
+This changes the stored authorization. Do not use it as the first response to
+a mistyped path, missing editor permission or the TELE team-path limitation.
+
+### Create a separate upload-test folder
+
+Use a separate Dropbox test prefix while setting up the station. Unlike the
+read-only listings above, this block creates a folder if needed; it does not
+start TELE or upload recorder data.
+
+```bash
+# Run on: Ubuntu station.
 REMOTE_BASE='tele_dropbox:my_dropbox_path/tele/station01-test'
 sudo rclone --config /etc/tele/rclone.conf mkdir "$REMOTE_BASE"
 sudo rclone --config /etc/tele/rclone.conf lsf "$REMOTE_BASE"
@@ -1042,6 +1395,7 @@ prefix. Confirm the value of `REMOTE_BASE` first; do not point it at another
 station or an unrelated Dropbox folder.
 
 ```bash
+# Run on: Ubuntu station.
 TEST_DIR=$(mktemp -d)
 mkdir "$TEST_DIR/data"
 printf 'TELE bench upload test\n' >"$TEST_DIR/data/rclone-test.txt"
@@ -1063,6 +1417,7 @@ One-way checking leaves unrelated destination files alone
 After verifying the exact test destination, you may remove only the test file:
 
 ```bash
+# Run on: Ubuntu station.
 sudo rclone --config /etc/tele/rclone.conf deletefile \
   "$REMOTE_BASE/setup-test/rclone-test.txt"
 rm -f "$TEST_DIR/data/rclone-test.txt" "$TEST_DIR/dropbox.sum"
@@ -1077,6 +1432,7 @@ prefix. The production collector itself does not delete Dropbox data.
 For a new installation, copy the example and edit it locally:
 
 ```bash
+# Run on: Ubuntu station.
 sudo install -o root -g root -m 0600 \
   /opt/tele/current/config/node.conf.example /etc/tele/node.conf
 sudoedit /etc/tele/node.conf
@@ -1099,7 +1455,7 @@ VNC_PORT=5901
 | Setting | Meaning and constraints |
 |---|---|
 | `RCLONE_REMOTE` | Configured remote name without its trailing colon |
-| `DROPBOX_ROOT` | Optional root prefix; permits letters, numbers, underscores, dots, slashes and hyphens, not spaces |
+| `DROPBOX_ROOT` | Optional root prefix; no spaces, and a leading slash is currently stripped. Read the team-folder limitation before using a team-root path. |
 | `RECORDER_SERIAL` | Exact trimmed serial exposed by `lsblk`; uses the same identifier character restriction |
 | `RECORDER_DEVICE` | Absolute whole-disk `/dev/disk/by-id/...` link, not a partition link |
 | `RCLONE_CONFIG` | Absolute protected rclone configuration path |
@@ -1124,6 +1480,7 @@ program or disk.
 Create the private local configuration before running TELE:
 
 ```bash
+# Run on: Ubuntu station.
 sudo install -o root -g root -m 0600 \
   /opt/tele/current/config/config.defaults /etc/tele/config.txt
 sudoedit /etc/tele/config.txt
@@ -1168,21 +1525,62 @@ before moving any files or acknowledgments.
 
 ### Gmail app-password setup
 
-The notification script uses Gmail's SMTP service with an app
-password. Enable 2-Step Verification and follow Google's account-specific
-app-password instructions; managed accounts, security-key-only configurations
-and Advanced Protection can affect availability
-([Google app-password help](https://support.google.com/accounts/answer/185833?hl=en)).
+For `EMAIL_PASSWORD`, TELE needs a **Gmail app password**, not the Google account's
+normal password. It is also not a six-digit sign-in code, a recovery code or a
+Dropbox token.
 
-Manage the account through [Google Account](https://myaccount.google.com).
-Use a separate app password for the station, not the normal account password,
-and make sure the responsible operator retains recovery access.
+Google requires 2-Step Verification for app passwords and describes them as
+16-character app/device credentials ([Google app-password instructions](https://support.google.com/accounts/answer/185833?hl=en)).
+Do the following in a browser on the Mac or another trusted administration computer:
+
+1. Open [Google Account](https://myaccount.google.com) and sign into the account
+   that will appear in `EMAIL_FROM`. Check the account shown in the profile menu
+   if several Google accounts are signed in.
+2. Open the account's security/sign-in settings and enable **2-Step Verification**
+   if it is not already enabled. Complete the setup, rather than stopping after
+   adding only a recovery email or phone number.
+3. Open [Google App passwords](https://myaccount.google.com/apppasswords).
+   Google may ask you to sign in again.
+4. Create a new app password for this station. If asked for an app name, use a
+   recognizable label such as `TELE station01 email`.
+5. Copy the generated app password into the station's protected email file in
+   the next section. If it is displayed in groups separated by spaces, enter
+   the 16 characters without the display spaces.
+6. Set `EMAIL_FROM` to the same account for which you generated that password.
+   Set `EMAIL_TO` to the operator who should receive reports.
+7. Run the separate bench email test and confirm that the message arrives
+   before enabling unattended operation.
+
+Do not paste the generated password into the terminal command line or commit
+it in an example file. If you lose it or are unsure which station used it,
+create a replacement, update that station's private file and retest.
+
+### If Google does not show App passwords
+
+Check the actual signed-in account before changing security settings. A Google
+profile open in another tab may be a different account from the intended sender.
+
+| Check | What to do |
+|---|---|
+| 2-Step Verification is not fully enabled | Complete it, then reopen the app-password page |
+| Account is managed by work or school | Ask the account administrator whether app passwords are permitted |
+| 2-Step Verification uses only security keys | Check Google's account-specific availability guidance |
+| Account uses Advanced Protection | Ask for an approved supported mail arrangement rather than weakening that protection |
+| The direct page opens a sign-in screen | Sign in with the intended sender account, then return to the app-password page |
+
+Google lists managed accounts, security-key-only setups and Advanced Protection
+among the reasons the option may be unavailable
+([Google app-password help](https://support.google.com/accounts/answer/185833?hl=en)).
+Do not disable account protection or substitute the normal Google password to
+get past the problem; the current mail helper expects a supported Gmail app-password setup.
+
 
 ### Create the private email file
 
 For a new installation:
 
 ```bash
+# Run on: Ubuntu station.
 sudo install -o root -g root -m 0600 \
   /opt/tele/current/config/credentials.txt.example /etc/tele/credentials.txt
 sudoedit /etc/tele/credentials.txt
@@ -1196,6 +1594,10 @@ EMAIL_TO=operator@example.com
 EMAIL_PASSWORD=REPLACE_WITH_STATION_APP_PASSWORD
 ```
 
+Replace the password placeholder inside `/etc/tele/credentials.txt`, using
+`sudoedit`, with the generated app password. Do not edit the public
+`config/credentials.txt.example` to hold your real credential.
+
 The script supports one recipient address and Gmail SMTP. Multiple recipients
 and other mail providers would need changes to the notification code; extra
 configuration keys are rejected.
@@ -1207,6 +1609,7 @@ commands or interpret a sourced credentials script.
 ### Inspect permissions without exposing secrets
 
 ```bash
+# Run on: Ubuntu station.
 sudo stat -c '%a %U %G %n' \
   /etc/tele/node.conf \
   /etc/tele/config.txt \
@@ -1228,6 +1631,7 @@ code. It sends a real message to `EMAIL_TO`, creates local diagnostic/state
 directories, and does not invoke the recorder or install a shutdown trap.
 
 ```bash
+# Run on: Ubuntu station.
 sudo bash <<'BASH'
 set -Eeuo pipefail
 source /opt/tele/current/tele.sh
@@ -1243,6 +1647,46 @@ BASH
 Confirm the message arrived and inspect the station's local log if it did not.
 Email is best effort: unavailable internet, invalid credentials or emergency
 shutdown can prevent delivery even though power protection works correctly.
+
+Expected result: the configured recipient receives an email with `BENCH_TEST`
+in its subject. A missing email does not justify running the complete field
+service to try again; inspect the helper's log, sender account, credential and
+network while the computer is still in the controlled bench state.
+
+### Which password or token goes where
+
+I keep these identities separate so that a change to one account does not become
+a confusing station-wide troubleshooting exercise.
+
+| Credential | Where it is used | What to remember |
+|---|---|---|
+| Ubuntu login/sudo credential | Local administration or the selected SSH authentication method | Not a Dropbox or Gmail credential; test the intended administrator access |
+| Google account password | Google website sign-in | Do not put it in `EMAIL_PASSWORD` |
+| Gmail app password | `EMAIL_PASSWORD` in `/etc/tele/credentials.txt` | Google revokes app passwords when the Google account password changes; generate a replacement and update the station ([Google](https://support.google.com/accounts/answer/185833?hl=en)) |
+| Dropbox account password | Browser sign-in during account authorization | A normal password change alone does not invalidate existing access/refresh tokens ([Dropbox API explanation](https://community.dropbox.com/en/discussion/622289/does-changing-password-to-dropbox-will-affect-the-api-key-or-token/p1)) |
+| Dropbox OAuth credentials | `/etc/tele/rclone.conf`, maintained by rclone | Treat token material as a secret; app authorization is separate from the account password ([Dropbox OAuth guide](https://developers.dropbox.com/oauth-guide)) |
+| Tailscale enrollment and device identity | Tailscale setup and its own protected state | Record enrollment and device-expiry policy separately; do not put either in Dropbox config |
+| VNC password | The file created by `tigervncpasswd` | Separate from the Ubuntu, Google and Dropbox credentials |
+
+In particular, **Google and Dropbox do not behave the same way when an account
+password changes**. Plan a Gmail app-password replacement during maintenance
+when changing the Google password; do not assume Dropbox must be reauthorized
+just because its password changed.
+
+I recommend giving each station its own named Gmail app password. If several
+stations share one Google account, plan replacements for all of them when
+changing that account's main password, because Google revokes the account's
+app passwords ([Google password-change guidance](https://support.google.com/accounts/answer/185833?hl=en)).
+
+Dropbox access can still be lost through app disconnection, account changes or
+team-administrator action; long-term authorization is not a promise that access
+can never be revoked ([Dropbox API revocation explanation](https://community.dropbox.com/en/discussion/784068/invalid-access-token-across-multiple-dropbox-team-spaces)).
+After a planned account/security change, verify a harmless folder listing and
+the bench email test while recovery access is still available.
+
+Do not postpone necessary security action to preserve station access. If an
+account or token is compromised, revoke it and arrange a controlled credential
+replacement.
 
 ### Credential lifecycle
 
@@ -1406,6 +1850,7 @@ file being uploaded must say `station=station01-test`. Switch to the real
 station label and prefix together only after checking the setup.
 
 ```bash
+# Run on: Ubuntu station.
 REMOTE_BASE='tele_dropbox:my_dropbox_path/tele/station01-test'
 sudo rclone --config /etc/tele/rclone.conf copyto \
   /absolute/path/to/config.txt "$REMOTE_BASE/config.txt" --checksum
@@ -1433,6 +1878,7 @@ build should record the installed version ([Tailscale Linux installation](https:
 Tailscale provides this installation command:
 
 ```bash
+# Run on: Ubuntu station.
 curl -fsSL https://tailscale.com/install.sh | sh
 ```
 
@@ -1441,6 +1887,7 @@ package-repository method before granting installation privileges. After
 installation, enroll interactively on the bench:
 
 ```bash
+# Run on: Ubuntu station.
 sudo tailscale up
 tailscale status
 tailscale ip
@@ -1462,6 +1909,7 @@ There are two related but different ways to use SSH:
 To enable the built-in option from a local bench session:
 
 ```bash
+# Run on: Ubuntu station.
 sudo tailscale set --ssh
 ```
 
@@ -1473,6 +1921,7 @@ Allow both the required network access and the intended SSH users in tailnet pol
 For ordinary OpenSSH, verify its service on the bench:
 
 ```bash
+# Run on: Ubuntu station.
 sudo systemctl enable --now ssh
 sudo systemctl status ssh
 ```
@@ -1504,6 +1953,7 @@ Do not run multiple conflicting Tailscale app/daemon variants on the Mac
 If you prefer the command-line-only version, the Homebrew setup is:
 
 ```bash
+# Run on: Mac.
 brew install --formula tailscale
 sudo brew services start tailscale
 sudo tailscale up
@@ -1520,6 +1970,7 @@ The Mac only needs client connectivity to administer the Ubuntu station.
 Use the station's actual Tailscale address or approved MagicDNS hostname:
 
 ```bash
+# Run on: Mac.
 ssh tele@station01
 ```
 
@@ -1529,6 +1980,7 @@ Check the device identity before connecting, especially when managing several st
 End the session normally:
 
 ```bash
+# Run on: Ubuntu station, inside the SSH session; this returns you to the Mac terminal.
 exit
 ```
 
@@ -1546,6 +1998,7 @@ to a temporary operator-readable location, then copy it from the Mac. For exampl
 replace the actual run filename before using this Ubuntu command:
 
 ```bash
+# Run on: Ubuntu station.
 sudo install -o tele -g tele -m 0600 \
   /var/log/tele/station01/ACTUAL-RUN.log /home/tele/tele-export.log
 ```
@@ -1553,6 +2006,7 @@ sudo install -o tele -g tele -m 0600 \
 On the Mac:
 
 ```bash
+# Run on: Mac.
 mkdir -p "$HOME/backups"
 scp tele@station01:/home/tele/tele-export.log "$HOME/backups/"
 ```
@@ -1574,6 +2028,7 @@ listening, password file and startup script used here
 On the Ubuntu bench station:
 
 ```bash
+# Run on: Ubuntu station.
 sudo apt install -y xfce4 tigervnc-standalone-server tigervnc-tools dbus-x11
 command -v tigervncserver tigervncpasswd dbus-run-session startxfce4
 ```
@@ -1586,6 +2041,7 @@ Create the protected VNC password location and enter a dedicated password throug
 the local prompt:
 
 ```bash
+# Run on: Ubuntu station.
 sudo install -d -o tele -g tele -m 0700 /etc/tele/vnc
 sudo -H -u tele tigervncpasswd /etc/tele/vnc/tele.passwd
 sudo chown tele:tele /etc/tele/vnc/tele.passwd
@@ -1599,6 +2055,7 @@ private to the VNC user.
 ### Install the VNC unit without enabling field collection
 
 ```bash
+# Run on: Ubuntu station.
 sudo install -o root -g root -m 0644 \
   /opt/tele/current/systemd/tele-vnc@.service /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -1616,6 +2073,7 @@ unexpected binding rather than opening a firewall port.
 Keep this terminal open:
 
 ```bash
+# Run on: Mac.
 ssh -N -L 5901:127.0.0.1:5901 tele@station01
 ```
 
@@ -1623,6 +2081,7 @@ Then use a VNC viewer on the Mac to connect to `127.0.0.1:5901`.
 For macOS Screen Sharing, this can be opened with:
 
 ```bash
+# Run on: Mac.
 open 'vnc://127.0.0.1:5901'
 ```
 
@@ -1639,6 +2098,7 @@ SSH path used for the tunnel, including built-in Tailscale SSH if enabled.
 Stop only the standalone VNC test service when finished:
 
 ```bash
+# Run on: Ubuntu station.
 sudo systemctl stop tele-vnc@tele.service
 ```
 
@@ -1666,6 +2126,7 @@ bench, not during collection.
 After installing the executable in the approved PATH:
 
 ```bash
+# Run on: Ubuntu station.
 grpcurl -version
 command -v grpcurl
 ```
@@ -1676,6 +2137,7 @@ station before deployment. Keep that record with the other package versions.
 ### Query the dish on the bench
 
 ```bash
+# Run on: Ubuntu station.
 timeout --signal=TERM --kill-after=5 25 \
   grpcurl -plaintext -max-time 20 -d '{"get_status":{}}' \
   192.168.100.1:9200 SpaceX.API.Device.Device/Handle
@@ -1710,6 +2172,7 @@ it later does not stop a service or timer that is already running.
 ### Copy and inspect units
 
 ```bash
+# Run on: Ubuntu station.
 sudo install -o root -g root -m 0644 \
   /opt/tele/current/systemd/tele.service \
   /opt/tele/current/systemd/tele-power-guard.timer \
@@ -1728,6 +2191,7 @@ Syntax validation alone does not prove service timing or physical poweroff.
 Inspect without starting the units:
 
 ```bash
+# Run on: Ubuntu station.
 sudo systemctl cat tele.service
 sudo systemctl cat tele-power-guard.timer
 sudo systemctl cat tele-poweroff.service
@@ -1774,6 +2238,7 @@ autostart entries, and disable any duplicate TELE launchers without changing
 unrelated jobs.
 
 ```bash
+# Run on: Ubuntu station.
 sudo -u tele crontab -l
 sudo crontab -l
 systemctl list-unit-files | grep -i tele
@@ -1792,6 +2257,53 @@ another tool depends on a rule before removing it.
 Work with physical access, stable power and a separate Dropbox station prefix.
 The checklist below covers the tests needed before deployment.
 `docs/VALIDATION.md` has further detail about the automated and hardware tests.
+
+### Keep the test stages separate
+
+Do not start with the complete field service just to find out whether a password
+or upload path is correct. Check each part while the computer is still under
+your control.
+
+| Stage | What runs | What it can change |
+|---|---|---|
+| Inspect | `pwd`, `lsblk`, `rclone lsd`, `systemctl status` | Read-only inspection; no intended data upload or shutdown |
+| Local software tests | `bash tests/run.sh` and ShellCheck | Temporary local test files; no real recorder, Dropbox, email or poweroff |
+| Native export test | Harvester into a fresh bench directory | Local data and possibly recorder harvest history; no cloud upload |
+| Cloud/email tests | Small rclone test file and the bench email helper | The selected Dropbox test destination and a real email to `EMAIL_TO` |
+| Remote-access test | Tailscale/SSH and the standalone VNC service | Access/session state, without starting the collector |
+| Field run | `tele.service` with the marker and emergency timer | Recorder export, live uploads, notifications and eventual poweroff |
+
+Before the early stages, inspect the machine's state rather than assuming that
+an SSH connection means it is safe from shutdown:
+
+```bash
+# Run on: Ubuntu station. Inspection only; inactive units may return a nonzero status.
+uptime
+sudo systemctl status tele.service tele-power-guard.timer
+sudo test ! -e /etc/tele/FIELD_ENABLED
+```
+
+If the last check fails, the activation marker exists. If a collector or timer
+is already active, plan a controlled maintenance session rather than casually
+stopping services or editing a running installation.
+
+### Understand the three time limits
+
+- **Harvest budget:** one hour of cumulative native export time by default,
+  not a new hour for each daily chunk.
+- **Maintenance idle window:** 10 minutes by default, only when `EXECUTE=ssh`
+  or `EXECUTE=vnc`; detected sessions reset this idle countdown.
+- **Emergency deadline:** four hours from boot by default, regardless of an
+  active SSH/VNC session. Starting the service late does not give a fresh
+  four-hour boot-timer allowance.
+
+`EXECUTE=auto` does not wait just because an administrator has opened SSH.
+Select a maintenance mode before the run if access is needed, and remember that
+the emergency timer still takes priority.
+
+`systemctl stop tele.service` can trigger its poweroff action. It is not a pause
+button, and removing `FIELD_ENABLED` does not cancel an already running service
+or timer. Test these behaviours with physical access before relying on them remotely.
 
 ### Before the first poweroff-capable run
 
@@ -1847,6 +2359,7 @@ the repository, installing dependencies or viewing the code.
 Only on the intended station, after completing the checks:
 
 ```bash
+# Run on: Ubuntu station.
 sudo touch /etc/tele/FIELD_ENABLED
 sudo chown root:root /etc/tele/FIELD_ENABLED
 sudo chmod 0600 /etc/tele/FIELD_ENABLED
@@ -1857,6 +2370,7 @@ Save all work and choose a deliberate reboot time. The next command disconnects
 current sessions; the machine is expected to collect and later shut down:
 
 ```bash
+# Run on: Ubuntu station.
 sudo systemctl reboot
 ```
 
@@ -1868,6 +2382,7 @@ requires the service context and an active emergency timer.
 During a requested maintenance window:
 
 ```bash
+# Run on: Ubuntu station.
 sudo journalctl -u tele.service -b
 sudo systemctl status tele.service
 sudo systemctl list-timers --all | grep tele
@@ -1890,6 +2405,7 @@ administrator can remove the activation marker and disable automatic starts.
 Do not interpret removing the marker alone as cancelling an already armed timer.
 
 ```bash
+# Run on: Ubuntu station.
 # Only in a controlled maintenance state, with no active collection:
 sudo rm -f /etc/tele/FIELD_ENABLED
 sudo systemctl disable tele.service tele-power-guard.timer
@@ -1950,6 +2466,42 @@ The script does not automatically reconstruct all local state from the remote
 receipts. If recovery is needed, stop and check the recorder identity, destination
 and available data before changing state; do not edit it during a collection.
 
+### Changing the upload destination
+
+An acknowledgment that data reached one Dropbox location is not proof that it
+exists in another. Treat a change of account, remote root, namespace or station
+label as a data-migration task, not just a cosmetic configuration edit.
+
+1. Confirm the new account's write permission and exact destination with direct
+   rclone listings and a small verified test upload.
+2. Check that TELE supports that path; the team-root/space limitation described
+   above must be resolved or an explicitly validated setup used first.
+3. Stop changes to configuration/state while a collection is active. Arrange
+   the new local settings and matching remote `config.txt` during maintenance.
+4. Preserve existing pending files and the old verified archive until the new
+   destination has been checked.
+5. Use a fresh reconciliation request for the data still retained by Pegasus,
+   rather than relying on incremental acknowledgments from the old destination.
+6. Keep that request active until the intended retained history has been
+   verified at the new destination, then return to normal incremental operation.
+
+For a supported, verified new destination, the operating settings could be:
+
+```ini
+station=station01
+EXECUTE=auto
+HARVEST_MODE=reconcile
+REQUEST_ID=destination-change-2026-09-29
+```
+
+If the label changes, a different local state directory is selected. Do not
+copy old verified acknowledgments into an empty new destination and assume
+they describe uploads there.
+
+Data already overwritten on the recorder cannot be recovered by reconciliation.
+If it exists only in the previous cloud archive or a retained local copy, plan
+and verify that transfer separately before retiring the old storage or credentials.
+
 ### Recorder overwrite and historical corrections
 
 The recorder's approximate three-year retention is not an unlimited backup.
@@ -1982,6 +2534,45 @@ If moving an existing installation to the TELE paths and unit names, read
 [the rename checklist](docs/RENAME.md) first. Do not remove pending data or leave
 two different collection services and power timers enabled.
 
+### Pulling updates to your source checkout
+
+Pull source updates in your working Git checkout, not in the installed
+`/opt/tele/current` release. This can be a checkout on the Mac or on the Ubuntu
+bench computer.
+
+First move into the actual repository directory and inspect it. If you chose
+a different clone location, substitute that path; on a Mac you can type `cd `
+and drag the folder from Finder into Terminal.
+
+```bash
+# Run on: Mac or Ubuntu, in your source checkout; adjust the example directory.
+cd "$HOME/projects/telemetry_setup"
+pwd
+git remote -v
+git status --short
+```
+
+If `git status --short` lists files, stop and decide which changes to keep.
+Review and deliberately commit or back up your work; do not run `git reset --hard`,
+delete the checkout or stage secrets just to clear an error.
+
+For a clean checkout:
+
+```bash
+# Run on: Mac or Ubuntu source checkout, only after checking for local changes.
+git fetch origin &&
+git switch main &&
+git pull --ff-only origin main &&
+git log -1 --oneline
+```
+
+`--ff-only` stops if local and remote history have diverged instead of silently
+creating a merge ([Git pull documentation](https://git-scm.com/docs/git-pull)).
+If it stops, inspect the branch/history before choosing a recovery action.
+
+This updates the checkout only. It does not replace the installed release,
+copy new systemd units, update protected credentials or activate field operation.
+
 ### Version policy
 
 Use a reviewed Git tag or exact commit that passed the relevant tests.
@@ -2001,6 +2592,7 @@ For an approved release directory already populated and checked, switch the link
 atomically on Ubuntu:
 
 ```bash
+# Run on: Ubuntu station.
 # Replace this with the actual tested release directory.
 NEW_RELEASE='/opt/tele/releases/APPROVED_VERSION_AND_COMMIT'
 sudo test -x "$NEW_RELEASE/tele.sh"
@@ -2042,6 +2634,7 @@ behaviour. A passed test on station01 is not sufficient evidence for station02.
 Inspect the service journal, activation marker and installed files:
 
 ```bash
+# Run on: Ubuntu station.
 sudo journalctl -u tele.service -b
 sudo systemctl cat tele.service
 sudo ls -l /etc/tele/FIELD_ENABLED /opt/tele/current/tele.sh
@@ -2056,6 +2649,7 @@ so diagnose on a controlled bench rather than repeatedly guessing remotely.
 ### Native Harvester is missing or will not load
 
 ```bash
+# Run on: Ubuntu station.
 sudo find /opt -type f -name harvester
 file /opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
 ```
@@ -2092,6 +2686,7 @@ when only one element has been processed.
 For a manual bench export, monitor the local test folder from another terminal:
 
 ```bash
+# Run on: Ubuntu station.
 sudo du -sh /absolute/path/to/bench-output
 sudo find /absolute/path/to/bench-output -type f | wc -l
 ```
@@ -2121,6 +2716,7 @@ guard or upload the shorter file over a previously complete one.
 ### Dropbox authentication, permissions or quota failure
 
 ```bash
+# Run on: Ubuntu station.
 sudo rclone --config /etc/tele/rclone.conf listremotes
 sudo rclone --config /etc/tele/rclone.conf lsf \
   'tele_dropbox:my_dropbox_path/tele/station01'
@@ -2147,6 +2743,7 @@ missing or changed content once the underlying fault is understood.
 ### Disk space runs low
 
 ```bash
+# Run on: Ubuntu station.
 df -h /var/lib/tele /var/log/tele
 sudo du -sh /var/lib/tele/station01/pending
 sudo du -sh /var/lib/tele/station01/last-verified
@@ -2170,6 +2767,17 @@ network readiness and the recipient's spam/quarantine rules.
 Use the bench email test in the email section. Keep credentials out of command
 arguments, shared logs and public support messages.
 
+| Symptom | First check |
+|---|---|
+| Google does not offer App passwords | Correct account, completed 2-Step Verification and account-policy restrictions |
+| Mail authentication rejected | `EMAIL_FROM` matches the account that generated the app password |
+| Mail stopped after a Google password change | Generate a replacement app password and update the station's private file |
+| Test seems to succeed but no message is visible | Correct `EMAIL_TO`, spam/quarantine, and the run log |
+| Credentials file rejected | Only the supported keys, no inline password comments, root ownership and mode 0600 |
+
+Do not solve a mail-only problem by replacing the Dropbox token. The providers
+and credential files are separate.
+
 ### Starlink diagnostics fail but data uploads work
 
 Inspect routing to `192.168.100.1:9200`, grpcurl installation and the response
@@ -2185,6 +2793,7 @@ the dish just to investigate a failed reading.
 On the Ubuntu bench station:
 
 ```bash
+# Run on: Ubuntu station.
 tailscale status
 tailscale ip
 sudo systemctl status tailscaled
@@ -2202,6 +2811,7 @@ whether the station is simply powered off as designed.
 ### VNC is unavailable
 
 ```bash
+# Run on: Ubuntu station.
 sudo systemctl status tele-vnc@tele.service
 sudo journalctl -u tele-vnc@tele.service -b
 sudo ss -ltnp | grep ':5901'
@@ -2217,6 +2827,7 @@ server settings; never fix a tunnel problem by exposing VNC publicly.
 Inspect the collector's exit behaviour and the independent timer:
 
 ```bash
+# Run on: Ubuntu station.
 sudo systemctl status tele-power-guard.timer
 sudo systemctl list-timers --all | grep tele
 sudo journalctl -u tele.service -u tele-poweroff.service -b
@@ -2225,6 +2836,7 @@ sudo journalctl -u tele.service -u tele-poweroff.service -b
 During an explicit bench test with all work saved, direct poweroff can be tested:
 
 ```bash
+# Run on: Ubuntu station.
 # This immediately requests shutdown of the computer where it is run.
 sudo /sbin/poweroff
 ```

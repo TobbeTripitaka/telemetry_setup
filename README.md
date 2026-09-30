@@ -12,11 +12,11 @@ The system has been running in Australia, and the Antarctic station has been
 transmitting data since February 2026. I am still testing this software update,
 so please contact me before using it at an unattended field site.
 
-<img src="img/GRIT%20_Final.png" width="120" alt="GRIT project logo">
+<img src="img/GRIT%30_Final.png" width="120" alt="GRIT project logo">
 
 ## Hardware and setup
 
-My setup uses a Shuttle SPCEL03, a Starlink Mini and a USB-controlled relay.
+The setup uses a Shuttle SPCEL03, a Starlink Mini, and a USB-controlled relay.
 The BIOS wakes the computer once a week. USB 5 V operates the relay, so Starlink
 powers up with the computer and switches off when the computer shuts down.
 

@@ -1,6 +1,6 @@
 # TELE v4 validation and field-release gates
 
-Local tests cannot establish that the vendor Harvester exports complete scientific
+Local tests cannot establish that Pegaqus exports complete scientific
 data or that the Shuttle powers off reliably. Treat this checklist as a release
 gate, not optional documentation.
 

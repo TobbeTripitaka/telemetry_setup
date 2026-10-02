@@ -55,9 +55,7 @@ read the shutdown and recovery sections first.
 
 ## Before running commands
 
-The setup uses several websites. The command are labelled
-blocks so that a command meant for Ubuntu is not accidentally run on the Mac,
-or a setup command is mistaken for a harmless inspection command.
+The command blocks are labelled.
 
 | Location | What happens there |
 |---|---|
@@ -118,10 +116,9 @@ computer only needs to be awake when collecting and transmitting data.
 
 The system has been running in Australia, and the Antarctic station has been
 transmitting data since February 2026. This software update still needs its own
-field checks, so I am keeping those separate from the experience with the
-deployed stations.
+field checks (as of Oct 2026).
 
-### How I run the station
+### Station
 
 My stations wake once a week. Keeping the computer and Starlink on for longer
 than necessary wastes battery power, so shutdown is part of the job, not just

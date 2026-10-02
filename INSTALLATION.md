@@ -1,7 +1,7 @@
 # TELE installation and field deployment guide
 
-I built TELE to collect seismic data from remote stations where power and
-internet access are limited. The idea is straightforward: wake the computer,
+TELE is built to collect seismic data from remote stations where power and
+internet access are limited. The idea is: wake the computer,
 copy data from the Pegasus recorder, upload it to Dropbox, send a status email
 and switch everything off again.
 
@@ -55,7 +55,7 @@ read the shutdown and recovery sections first.
 
 ## Before running commands
 
-The setup uses several computers and websites. I have labelled the command
+The setup uses several websites. The command are labelled
 blocks so that a command meant for Ubuntu is not accidentally run on the Mac,
 or a setup command is mistaken for a harmless inspection command.
 

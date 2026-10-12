@@ -1,6 +1,6 @@
 # TELE v4 validation and field-release gates
 
-Local tests cannot establish that Pegaqus exports complete scientific
+Local tests cannot establish that Pegasus exports complete scientific
 data or that the Shuttle powers off reliably. Treat this checklist as a release
 gate, not optional documentation.
 
@@ -35,6 +35,27 @@ Covered cases include:
   unrelated remote files survive; previous run logs are retried.
 - **Remote windows:** auto mode skips waiting; detected SSH/Tailscale/VNC sessions
   defer normal shutdown; the idle countdown restarts after disconnect.
+- **Source profiles:** legacy path preservation, isolated multi-recorder state,
+  duplicate identity rejection, unsupported providers and workflow stage order.
+- **Destination changes:** leading team-root slash and spaces preserved; unsafe
+  roots rejected; acknowledgments at a different destination do not skip collection.
+- **Starlink:** known modes decoded, unknown fields rejected, already-Off avoids
+  writing, permission denial and unchanged readback cannot claim success.
+
+`tests/installer.sh` tests no-change preview, literal private parsing, invalid
+arguments/permissions, stage ordering and failure before activation with mocks.
+It does not install packages or exercise a real Ubuntu service manager.
+
+For the 12 October 2026 local revision, 74 runtime tests and 16 installer tests
+pass. ShellCheck reports no warnings with only the shared-global SC2034 exclusion;
+documentation checks cover 91 Bash examples, 14 configuration examples, 122 links
+and seven image references across the README, installation and rename guides.
+These counts describe local validation, not field acceptance.
+
+Before approving the installer on a station, test fresh install, rerun, failed
+download/checksum, missing vendor package, revoked OAuth, existing remote config,
+profile changes, VNC login, Tailscale policy and next-boot activation. Verify that
+partial setup cannot enable field mode and that existing pending data is untouched.
 
 Static validation: Bash syntax and ShellCheck warnings/errors, excluding
 SC2034 for intentional cross-module globals. Unit files can be parsed with
@@ -124,6 +145,6 @@ Obtain the original CLI PDF and the approved vendor package/version.
 - **Weekly wake:** demonstrate a full BIOS wake, collection, shutdown and next
   scheduled wake cycle before deployment.
 
-Only after these pass should the automated installer be written and field
-activation approved. Tests cannot eliminate the residual risk of an OS/kernel
+Only after these pass should the installer and field activation be approved for
+unattended deployment. Tests cannot eliminate the residual risk of an OS/kernel
 freeze without an independent physical power controller.

@@ -23,7 +23,7 @@ identify_recorder() {
         printf '%s\n' "$RECORDER_SERIAL" >"$temp"
         atomic_install "$temp" "$identity_file" || return 1
     fi
-    timeout -k 5 30 "$PEGASUS_BIN" digitizer-info "-i=$DEVICE" -safe \
+    source_timeout 30 "$PEGASUS_BIN" digitizer-info "-i=$DEVICE" -safe \
         >"$LOG_ROOT/$RUN_ID-digitizer.txt" 2>&1 || return 1
     log "Recorder identified as $RECORDER_SERIAL at $DEVICE"
 }
@@ -34,7 +34,7 @@ inspect_volumes() {
     for id in 1 2 3 4 5 6 7; do
         output="$LOG_ROOT/$RUN_ID-volume-$id.txt"
         local rc=0
-        timeout -k 5 30 "$PEGASUS_BIN" volume-info "-i=$DEVICE" "-id=$id" -safe >"$output" 2>&1 || rc=$?
+        source_timeout 30 "$PEGASUS_BIN" volume-info "-i=$DEVICE" "-id=$id" -safe >"$output" 2>&1 || rc=$?
         # Only an explicit "not found" is optional; I/O/format errors are fatal.
         if grep -Eiq "volume id=$id not found|volume[ #]+$id.*not found" "$output"; then
             [[ $id != 1 ]] || return 1

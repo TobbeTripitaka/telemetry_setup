@@ -397,6 +397,146 @@ test_native_flags_and_boundaries() {
     ! grep -q -- '^-p=' "$MOCK_ARGUMENT_LOG"
 }
 
+test_dropbox_team_root_and_spaces() {
+    RCLONE_REMOTE=tele_dropbox STATION_NAME=field01
+    node_key DROPBOX_ROOT '/Research Team/Project/'
+    set_station_paths
+    [[ $REMOTE_BASE == 'tele_dropbox:/Research Team/Project/tele/field01' ]]
+    [[ $REMOTE_DATA == "$REMOTE_BASE/pegasus_harvester" ]]
+    node_key DROPBOX_ROOT /
+    set_station_paths
+    [[ $REMOTE_BASE == tele_dropbox:/tele/field01 ]]
+}
+test_dropbox_unsafe_roots_rejected() {
+    local value
+    for value in '../team' '/team/../other' 'a//b' $'team\nbad' 'team\bad' '/./team'; do
+        expect_failure node_key DROPBOX_ROOT "$value"
+    done
+}
+test_destination_change_revisits_verified_days() {
+    batch
+    upload_batch "$SPOOL/2025-01-01"
+    REMOTE_DATA="$REMOTE_BASE/other-destination"
+    mkdir -p "$REMOTE_DATA"
+    EARLIEST_NS=1735689600000000000 LATEST_NS=1735775999999999999
+    HARVEST_BUDGET_SECONDS=20
+    harvest_cycle
+    [[ $(jq -r .destination "$VERIFIED/2025-01-01.json") == "$REMOTE_DATA" ]]
+}
+source_test_setup() {
+    STATION_STATE_ROOT=$STATE_ROOT STATION_LOG_ROOT=$LOG_ROOT
+    STATION_REMOTE_BASE=$REMOTE_BASE STATION_RUN_ID=$RUN_ID
+    SOURCE_PROFILES_DIR="$STATE_ROOT/profiles"
+    mkdir "$SOURCE_PROFILES_DIR"
+}
+profile_fixture() {
+    printf 'TYPE=pegasus\nRECORDER_DEVICE=/dev/disk/by-id/usb-%s\nRECORDER_SERIAL=%s\n' \
+        "$2" "$2" >"$SOURCE_PROFILES_DIR/$1.conf"
+}
+test_sources_keep_legacy_paths() {
+    source_test_setup
+    RECORDER_DEVICE=/dev/disk/by-id/usb-test
+    discover_sources
+    [[ ${SOURCE_FILES[0]} == @single-pegasus ]]
+    load_source "${SOURCE_FILES[0]}"
+    [[ $STATE_ROOT == "$STATION_STATE_ROOT" && $REMOTE_DATA == "$STATION_REMOTE_BASE/pegasus_harvester" ]]
+}
+test_sources_isolated_namespaces() {
+    source_test_setup
+    profile_fixture pegasus01 recorder01
+    profile_fixture pegasus02 recorder02
+    discover_sources
+    validate_source_set
+    load_source "${SOURCE_FILES[0]}"
+    local first=$SPOOL
+    [[ $REMOTE_DATA == "$STATION_REMOTE_BASE/pegasus_harvester/pegasus01" ]]
+    load_source "${SOURCE_FILES[1]}"
+    [[ $SPOOL != "$first" && $RECORDER_SERIAL == recorder02 &&
+       $REMOTE_DATA == "$STATION_REMOTE_BASE/pegasus_harvester/pegasus02" ]]
+}
+test_duplicate_recorder_profiles_rejected() {
+    source_test_setup
+    profile_fixture one recorder01
+    profile_fixture two recorder01
+    discover_sources
+    expect_failure validate_source_set
+}
+test_case_colliding_source_names_rejected() {
+    source_test_setup
+    profile_fixture North recorder01
+    profile_fixture north recorder02
+    discover_sources
+    expect_failure validate_source_set
+}
+test_sources_continue_after_failure() {
+    SOURCE_FILES=(one two)
+    CLOUD_READY=yes HARVEST_BUDGET_SECONDS=30 SOURCES_OK=0 SOURCES_FAILED=0 RUN_STATUS=SUCCESS
+    discover_sources() { :; }
+    validate_source_set() { :; }
+    run_source() { [[ $1 == two ]]; }
+    collect_all_sources
+    [[ $SOURCES_OK == 1 && $SOURCES_FAILED == 1 && $RUN_STATUS == PARTIAL &&
+       $HARVEST_BUDGET_SECONDS == 30 && -z ${COLLECTION_DEADLINE:-} ]]
+}
+test_expired_source_deadline_blocks_commands() {
+    COLLECTION_DEADLINE=1
+    expect_failure source_timeout 30 touch "$STATE_ROOT/SHOULD_NOT_RUN"
+    [[ ! -e $STATE_ROOT/SHOULD_NOT_RUN ]]
+}
+test_unknown_provider_rejected() {
+    source_test_setup
+    printf 'TYPE=camera\n' >"$SOURCE_PROFILES_DIR/camera.conf"
+    expect_failure load_source "$SOURCE_PROFILES_DIR/camera.conf"
+}
+test_snow_modes_read_correctly() {
+    [[ $(starlink_snow_mode <<<'{"dishGetConfig":{"dishConfig":{"snowMeltMode":"ALWAYS_OFF"}}}') == ALWAYS_OFF ]]
+    [[ $(starlink_snow_mode <<<'{"dish_get_config":{"dish_config":{"snow_melt_mode":0}}}') == AUTO ]]
+    expect_failure starlink_snow_mode <<<'{}'
+}
+test_snow_off_no_write_when_already_off() {
+    starlink_rpc() {
+        [[ $1 == '{"dish_get_config":{}}' ]] || return 99
+        printf '{"dishGetConfig":{"dishConfig":{"snowMeltMode":"ALWAYS_OFF"}}}'
+    }
+    starlink_set_snow_off
+}
+test_snow_off_permission_denied_is_failure() {
+    starlink_rpc() {
+        [[ $1 == '{"dish_get_config":{}}' ]] || return 7
+        printf '{"dishGetConfig":{"dishConfig":{"snowMeltMode":"AUTO"}}}'
+    }
+    expect_failure starlink_set_snow_off
+}
+test_snow_off_false_success_rejected() {
+    starlink_rpc() {
+        if [[ $1 == '{"dish_get_config":{}}' ]]; then
+            printf '{"dishGetConfig":{"dishConfig":{"snowMeltMode":"AUTO"}}}'
+        else printf '{"dishSetConfig":{"error":""}}'; fi
+    }
+    expect_failure starlink_set_snow_off
+}
+test_workflow_readable_order() {
+    local calls="$STATE_ROOT/order"
+    prepare_run() { RUN_MODE=once; }
+    refresh_settings() { echo settings >>"$calls"; }
+    check_upload_connection() { echo cloud >>"$calls"; }
+    gather_station_diagnostics() { echo diagnostics >>"$calls"; }
+    collect_all_sources() { echo sources >>"$calls"; }
+    upload_station_logs() { echo logs >>"$calls"; }
+    send_run_report() { echo email >>"$calls"; }
+    offer_maintenance_window() { echo maintenance >>"$calls"; }
+    finish_run() { echo finish >>"$calls"; }
+    main --once
+    [[ $(<"$calls") == $'settings\ncloud\ndiagnostics\nsources\nlogs\nemail\nmaintenance\nfinish' ]]
+}
+test_check_does_not_run_collection() {
+    prepare_run() { RUN_MODE=check; }
+    check_setup() { return 0; }
+    refresh_settings() { return 99; }
+    collect_all_sources() { return 99; }
+    main --check
+}
+
 for TEST in $(declare -F | awk '$3 ~ /^test_/ {print $3}' | sort); do
     # Run strict tests in a subprocess, not an if-function context that disables errexit.
     set +e

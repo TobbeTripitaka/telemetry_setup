@@ -36,16 +36,18 @@ set_station_paths() {
     OWNERS="$STATE_ROOT/owners"
     LAST_BATCH="$STATE_ROOT/last-verified"
     LOG_ROOT="/var/log/tele/$STATION_NAME"
-    REMOTE_BASE="$RCLONE_REMOTE:${DROPBOX_ROOT:+$DROPBOX_ROOT/}tele/$STATION_NAME"
+    local prefix=$DROPBOX_ROOT
+    [[ -z $prefix || $prefix == / ]] || prefix="$prefix/"
+    REMOTE_BASE="$RCLONE_REMOTE:${prefix}tele/$STATION_NAME"
     REMOTE_DATA="$REMOTE_BASE/pegasus_harvester"
 }
 
 init_workspace() {
     set_station_paths || return 1
-    mkdir -p -- "$SPOOL" "$VERIFIED" "$OWNERS" "$LOG_ROOT"
+    mkdir -p -- "$SPOOL" "$VERIFIED" "$OWNERS" "$LOG_ROOT" || return 1
     RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
     LOG_FILE="$LOG_ROOT/$RUN_ID.log"
-    touch "$LOG_FILE"
+    touch "$LOG_FILE" || return 1
 }
 
 check_dependencies() {
@@ -64,8 +66,19 @@ disk_has_reserve() {
 }
 
 # All network operations are bounded. Never echo a credential-bearing command.
+source_timeout() {
+    local seconds=$1 remaining
+    shift
+    if [[ -n ${COLLECTION_DEADLINE:-} ]]; then
+        remaining=$((COLLECTION_DEADLINE - $(uptime_seconds)))
+        ((remaining > 0)) || return 124
+        ((seconds <= remaining)) || seconds=$remaining
+    fi
+    timeout --signal=TERM --kill-after=10 "$seconds" "$@"
+}
+
 cloud() {
-    timeout --signal=TERM --kill-after=10 "$NETWORK_TIMEOUT_SECONDS" \
+    source_timeout "$NETWORK_TIMEOUT_SECONDS" \
         rclone "$@" --contimeout 15s --timeout 45s --retries 2 \
         --low-level-retries 3 --transfers 2 --checkers 2 \
         --dropbox-batch-mode sync

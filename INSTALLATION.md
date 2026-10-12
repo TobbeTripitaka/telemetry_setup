@@ -9,7 +9,7 @@ This guide brings together the hardware, suppliers, photographs and software
 setup I use. I've included the practical details so that another station can
 be built without having to work out the same things again.
 
-**Updated:** 29 September 2026. The software covered here is `4.0.1`.
+**Updated:** 12 October 2026. The software covered here is `4.0.1`.
 Record the exact code revision used for testing as described in the installation section.
 
 > **Testing is still in progress.** Please contact me before using this update
@@ -28,6 +28,8 @@ Record the exact code revision used for testing as described in the installation
 - [Assembly, cabling and power checks](#assembly-cabling-and-power-checks)
 - [Station details](#station-details)
 - [Configuration file map](#configuration-file-map)
+- [Master installer](#master-installer)
+- [Multiple recorders and extension modules](#multiple-recorders-and-extension-modules)
 - [Install and prepare Ubuntu](#install-and-prepare-ubuntu)
 - [Configure BIOS wake-up and shutdown behaviour](#configure-bios-wake-up-and-shutdown-behaviour)
 - [Install Ubuntu dependencies](#install-ubuntu-dependencies)
@@ -135,7 +137,7 @@ something to do after a successful upload.
   that a particular old interval remains available.
 - **Native exports:** waveform miniSEED, SOH, legacy SOH and logs; no routine
   raw PSF image.
-- **Harvest budget:** 3,600 seconds of cumulative native export time by default,
+- **Harvest budget:** a shared 3,600-second source-collection allowance by default,
   with a bounded termination grace period.
 - **Emergency limit:** poweroff is requested at four hours from boot, including
   during a remote-maintenance session.
@@ -444,6 +446,246 @@ This example assumes a destination that the current TELE parser supports.
 For a shared/team folder, complete the Dropbox discovery steps and read the
 team-folder limitation below before treating the example as your actual path.
 
+## Master installer
+
+`INSTALL.sh` is the main setup entry point on Ubuntu. It automates the software
+steps in this guide; the detailed manual instructions remain useful for checking
+what it does and diagnosing a failed stage. Run it on stable bench power with
+physical access, not during an unattended weekly battery-powered run.
+
+The first deployment still needs a real bench acceptance test. The automated
+tests exercise parsing, orchestration and simulated collection; they do not
+establish that every package, recorder, account or BIOS works on a field computer.
+
+### What to prepare
+
+- **Ubuntu:** an installed Ubuntu 22.04, 24.04 or 26.04 LTS system using systemd.
+  The installer accepts amd64/arm64, but the Nanometrics package must support the
+  actual architecture. It does not install or upgrade the operating system.
+- **Recorder identity:** the verified whole-disk `/dev/disk/by-id/...` path and
+  serial. The installer does not guess which disk it should open.
+- **Nanometrics package:** an authorized local `.deb` with a trusted SHA256,
+  a permitted public HTTPS download URL with SHA256, or an already installed
+  native binary. Vendor login and licensing cannot be replaced by the installer.
+- **Dropbox:** the intended project account's authorized rclone configuration,
+  or the full OAuth token JSON. Accept the team-folder invitation first.
+- **Email:** sender, recipient and a Google app password, not the normal account
+  password. Follow [Gmail app-password setup](#gmail-app-password-setup).
+- **Tailscale:** an already enrolled device or an enrollment auth key, plus tailnet
+  access policy allowing the intended operator to connect.
+- **VNC:** a separate eight-character password if enabled. VNC remains loopback-only
+  and must be reached through the SSH tunnel.
+- **Physical setup:** BIOS weekly wake, USB rail cutoff and relay behaviour must
+  be checked at the computer. The installer does not flash firmware or alter BIOS.
+
+One private text file supplies the settings. Package files and an optional rclone
+configuration can be referenced by local path; alternatively the bundle can
+contain OAuth JSON and an approved public package URL. An email address and
+password alone are not enough to provision all these independent services.
+
+### Prepare the private setup file
+
+On the Ubuntu station, obtain and review the repository as described in
+[pinned release deployment](#obtain-and-deploy-a-pinned-tele-release), then:
+
+```bash
+# Run on: Ubuntu station, inside the reviewed source checkout.
+sudo install -m 600 -o root -g root config/setup.conf.example /root/tele-setup.conf
+sudo nano /root/tele-setup.conf
+```
+
+Replace every placeholder. The installer uses literal `KEY=value` lines:
+no shell expansion, no wrapping quotes and no inline comments. Keep embedded
+OAuth/profile JSON on one line. Never post the filled file or diagnostic output
+containing its contents.
+
+For an existing rclone configuration, use `RCLONE_CONFIG_FILE=/root/project-rclone.conf`,
+with root ownership and mode 0600. Only the named remote is imported, retaining
+its advanced options such as namespace settings. If using `DROPBOX_TOKEN_JSON`,
+provide the full authorization result including the refresh token, and leave
+`RCLONE_CONFIG_FILE` unset. On a rerun, omitting both reuses `/etc/tele/rclone.conf`.
+
+Tailscale enrollment passes the key through a private temporary file, not a
+literal secret in the command line; the CLI supports `--auth-key=file:/path`
+([Tailscale CLI documentation](https://tailscale.com/docs/reference/tailscale-cli/up)).
+The source bundle remains sensitive after installation, so store it privately
+or remove it according to the project's credential-handling policy.
+
+### Choose the mode
+
+Start with a no-change preview. It needs neither credentials nor root and does
+not download anything or validate the station:
+
+```bash
+# Run on: Ubuntu station, inside the reviewed source checkout.
+bash INSTALL.sh --mode plan
+```
+
+For the first station, confirm each stage:
+
+```bash
+# Run on: Ubuntu station. Installs packages and changes local settings.
+sudo bash INSTALL.sh --config /root/tele-setup.conf --mode confirm
+```
+
+For a prepared repeat deployment, run without questions:
+
+```bash
+# Run on: Ubuntu station. Same changes, but no per-stage prompts.
+sudo bash INSTALL.sh --config /root/tele-setup.conf --mode auto
+```
+
+Declining a required stage stops installation. Automatic mode fails instead of
+asking for missing credentials, and neither mode reboots or powers off the computer.
+Read the stage list and setup file before authorizing unattended installation.
+
+By default, the installer downloads `main` once and records its exact revision.
+For reproducibility, specify `--ref TESTED_COMMIT_OR_TAG`, replacing that label with
+the real revision. `--source-dir /absolute/path/to/checkout` installs a clean,
+committed local checkout instead; it refuses uncommitted edits. Do not set a ref
+that predates this installer and its matching runtime.
+
+The script can also be downloaded on its own:
+
+```bash
+# Run on: Ubuntu station. Download first, then inspect; do not pipe into sudo bash.
+curl --fail --location --output INSTALL.sh \
+  https://raw.githubusercontent.com/TobbeTripitaka/telemetry_setup/main/INSTALL.sh
+less INSTALL.sh
+# After preparing the private setup file:
+sudo bash INSTALL.sh --config /root/tele-setup.conf --mode confirm
+```
+
+For a released station, use the same tested Git commit in the download URL and
+the `--ref` option rather than depending on a moving branch.
+
+### What each stage does
+
+| Stage | Actions and limits |
+|---|---|
+| Preflight | Check Ubuntu/systemd, architecture, private input and locks; refuse an active field collector/timer, existing field marker, enabled legacy service or detected duplicate cron/autostart hooks |
+| Source | Install bootstrap tools, fetch one revision and validate the setup bundle |
+| Dependencies | Install native tools, pinned rclone 1.75.2 and grpcurl 1.9.4 with published SHA256 checks, optional Xfce/TigerVNC, and the supplied/checksummed Harvester package |
+| Linux | Create the operator account if absent, set UTC/NTP, optionally mask sleep/hibernate, enable OpenSSH; no passwordless sudo or desktop autologin |
+| Tailscale | Configure its signed stable apt repository, install/enroll and enable Tailscale SSH; reuse enrollment if already running |
+| Configuration | Back up existing private settings, install a Git-revision-labelled release and write local runtime files/source profiles |
+| Services | Install VNC and both shutdown mechanisms, with the same configurable emergency ceiling; do not start them |
+| Checks | Inspect recorder identity/ranges, check Dropbox, preserve a valid existing remote config or create a missing one, optionally upload/download a tiny retained probe and send a test email |
+| Starlink | Read snow-melt mode, or make the explicitly requested Off attempt and require readback |
+| Optional activation | Only with `--enable-field`, enable collection and the timer for the next boot |
+
+Package checksum verification checks downloaded contents against the manifests
+served over HTTPS; it is not an independent signature or a guarantee that upstream
+software is safe. The Git revision pins TELE, while Ubuntu/Tailscale dependencies
+come from their configured repositories; this is not a fully frozen OS image.
+
+The installer does not alter firewall rules, broad network routing, BIOS settings,
+Linux passwords or existing sudo policy. It does not configure a GUI autologin,
+force a full Ubuntu upgrade, start VNC permanently, or reboot the antenna.
+
+Detected duplicate cron/autostart hooks stop installation for review rather than
+being silently deleted. A harmless commented reference may also trigger this
+conservative check; inspect the named file and remove or relocate the obsolete
+entry deliberately before rerunning.
+
+### Reruns, failures and local backups
+
+Installation stops on a failed required stage. It does not automatically undo
+packages, account creation or Linux settings already changed; fix the reported
+problem and rerun. No field activation is performed before all required checks pass.
+
+Existing private settings are saved under `/var/backups/tele/<timestamp>/`.
+These small administrative backups are separate from recorder-payload retention;
+they contain secrets and must stay protected. Runtime pending files, verified
+receipts and retained payloads are not deleted by installation.
+
+The setup bundle is authoritative for generated local files and source profiles.
+A valid existing Dropbox `config.txt` is preserved, including its current
+maintenance/collection mode; inspect it rather than assuming the new local
+`EXECUTE=auto` overrides it. An invalid or wrong-station remote config aborts
+the check and is not silently replaced.
+
+For an existing field installation, first enter controlled bench maintenance
+with the collector/timer inactive and remove the activation marker as described
+in [returning to bench state](#returning-to-a-non-field-bench-state). Do not stop
+the active field collector casually: its service requests poweroff when stopped.
+
+### Bench commands and field activation
+
+After installation, check the configuration and connected devices:
+
+```bash
+# Run on: Ubuntu station. No harvest, email or shutdown; local diagnostics/state may be written.
+sudo /opt/tele/current/tele.sh --check
+```
+
+Then test a real collection/upload/email cycle:
+
+```bash
+# Run on: Ubuntu bench station. Writes to Dropbox and may update recorder harvest history.
+sudo /opt/tele/current/tele.sh --once
+```
+
+`--once` does not wait for maintenance or request shutdown. Both bench commands
+refuse to run when the field service or power guard is active; keep bench power
+reliable and do not leave a bench-mode computer unattended on the field battery.
+
+After completing the physical acceptance checklist, either use the manual
+[field activation steps](#explicit-field-mode-activation) or explicitly authorize
+activation during installation:
+
+```bash
+# Run on: Ubuntu station only after bench acceptance.
+# Enables poweroff-capable operation for NEXT boot; does not reboot now.
+sudo bash INSTALL.sh --config /root/tele-setup.conf --mode confirm --enable-field
+```
+
+Review the preserved Dropbox configuration before that next boot. A four-hour
+emergency timer is boot-relative, not a fresh four hours from when a service starts.
+
+## Multiple recorders and extension modules
+
+`tele.sh` contains the high-level sequence; `lib/workflow.sh` handles its shared
+steps and `lib/sources.sh` dispatches collectors. Each trusted module implements
+validation, destination naming, inspection and collection, with one private
+profile per source. The [module guide](docs/MODULES.md) documents the contract.
+
+For a single existing recorder, leave `/etc/tele/sources.d/` empty and retain
+`RECORDER_DEVICE`/`RECORDER_SERIAL` in `node.conf`. This preserves the original
+state and `pegasus_harvester/` upload paths.
+
+For multiple recorders, put `SOURCES_JSON` in the setup bundle, for example:
+
+```ini
+SOURCES_JSON=[{"id":"pegasus01","device":"/dev/disk/by-id/usb-REAL_ID_1","serial":"REAL_SERIAL_1"},{"id":"pegasus02","device":"/dev/disk/by-id/usb-REAL_ID_2","serial":"REAL_SERIAL_2"}]
+```
+
+Use real verified values, not those placeholders. The installer creates
+`/etc/tele/sources.d/pegasus01.conf` and `pegasus02.conf`; profiles are data,
+not executable shell scripts.
+
+The resulting outer layout is:
+
+```text
+<dropbox_root>/tele/<station>/
+  config.txt
+  pegasus_harvester/
+    pegasus01/<native Harvester paths>
+    pegasus02/<native Harvester paths>
+  tele_logfiles/
+```
+
+Each source has separate local pending/verified state and shares the station's
+collection allowance. A failed recorder does not erase its pending uploads or
+prevent the next valid source from being attempted. Duplicate recorder identities
+and case-insensitive destination collisions are rejected.
+
+Do not convert an existing single recorder to a profile while it has pending
+uploads. Drain and verify them first, then plan the new namespace and reconcile
+the recorder's retained history. Neither old cloud files nor local state are
+automatically moved. Camera and other logger drivers require real implementation
+and tests; the disabled example is not a working data collector.
+
 ## Install and prepare Ubuntu
 
 ### Choose and record the operating system
@@ -574,7 +816,7 @@ observe the next power-on. Repeat after testing relay release, then configure
 the actual weekly schedule.
 
 If the firmware does not expose the schedule you expect, stop and document the
-limitation. Do not assume the later installer can program an unsupported BIOS
+limitation. Do not assume the installer can program an unsupported BIOS
 feature. Check that the intended weekly schedule really works on the computer.
 
 Firmware updates, if needed, belong in a controlled maintenance session with the
@@ -1171,7 +1413,7 @@ A path with spaces must be quoted in the shell. For example, this is a direct
 rclone discovery command, not a TELE configuration example:
 
 ```bash
-# Run on: Ubuntu station. Read-only rclone team-folder listing; not a supported TELE root configuration yet.
+# Run on: Ubuntu station. Read-only rclone team-folder listing.
 sudo rclone --config /etc/tele/rclone.conf lsd 'tele_dropbox:/Research Team'
 ```
 
@@ -1184,24 +1426,16 @@ Do not guess namespace IDs or use administrator impersonation as a routine short
 
 ### Dropbox team-folder limitation in TELE
 
-**This is an outstanding code issue, not fixed by these documentation changes.**
-The current `DROPBOX_ROOT` validation strips a leading `/` and rejects spaces,
-even when the value is enclosed in quotes.
+TELE preserves leading `/` and spaces in `DROPBOX_ROOT`, for example
+`DROPBOX_ROOT=/Research Team/Project`. It rejects traversal components, control
+characters, backslashes and repeated slashes. Tests cover the resulting station
+data, log and configuration prefix; the same prefix is used for all three.
 
-That means a direct rclone team-folder command can work while the same intended
-destination is not handled correctly by TELE. In particular, stripping a team-root
-slash can change which Dropbox area is addressed; a successful upload to a
-similarly named personal folder would not be the intended result.
-
-Before automated team-folder use, the path handling needs a separate reviewed
-code change and tests covering the exact resulting data, log and config paths.
-A namespace-rooted remote may provide another route, but it must be configured
-and verified explicitly; this guide does not treat it as an already tested workaround.
-
-Until then, use direct read-only rclone discovery and an approved small test
-upload to establish access. Do not start a full automated harvest/upload to
-test a doubtful destination, and do not remove path validation just to suppress
-an error.
+The important remaining limitation is account access, not path spelling.
+A successful upload to a similarly named personal folder is not proof that the
+intended team area was selected. Use direct read-only discovery and an approved
+small test upload, then inspect the result in Dropbox before collecting a backlog.
+Namespace-rooted remotes must likewise be explicitly configured and verified.
 
 ### Choose the remote and destination
 
@@ -1452,7 +1686,7 @@ VNC_PORT=5901
 | Setting | Meaning and constraints |
 |---|---|
 | `RCLONE_REMOTE` | Configured remote name without its trailing colon |
-| `DROPBOX_ROOT` | Optional root prefix; no spaces, and a leading slash is currently stripped. Read the team-folder limitation before using a team-root path. |
+| `DROPBOX_ROOT` | Optional root prefix; spaces are supported and a leading `/` is preserved. Verify the exact team folder and account permissions before collection. |
 | `RECORDER_SERIAL` | Exact trimmed serial exposed by `lsblk`; uses the same identifier character restriction |
 | `RECORDER_DEVICE` | Absolute whole-disk `/dev/disk/by-id/...` link, not a partition link |
 | `RCLONE_CONFIG` | Absolute protected rclone configuration path |
@@ -1698,9 +1932,9 @@ replacement.
 - **Incident response:** revoke exposed material at the provider, replace it on
   the station through a trusted channel, and verify recovery before deployment.
 
-I would like the installer to take one private setup file and create the
-individual runtime files from it. That still needs the Dropbox authorization
-material as well as the email details; email/password pairs alone are not enough.
+The [master installer](#master-installer) reads one private setup file and creates
+the individual runtime files. It needs Dropbox authorization material as well as
+email details; email/password pairs alone are not enough.
 
 ## Configure remote station settings
 
@@ -1741,7 +1975,7 @@ rather than choosing a guessed upload folder. No configuration is executed as sh
 | `FROM_DATE` | Empty | Valid `20xx-MM-DD`, required for `range` |
 | `TO_DATE` | Empty | Valid later UTC date, exclusive upper day boundary for `range` |
 | `MAINTENANCE_IDLE_SECONDS` | `600` | Integer 0–3600; used only in SSH/VNC modes |
-| `HARVEST_BUDGET_SECONDS` | `3600` | Integer 1–3600; cumulative native export budget |
+| `HARVEST_BUDGET_SECONDS` | `3600` | Integer 1–3600; shared source-collection allowance, including device/network calls |
 | `NETWORK_TIMEOUT_SECONDS` | `300` | Integer 10–600; bound for each rclone operation |
 | `RETAIN_LAST_BATCH` | `yes` | `yes` or `no`; pending completed uploads remain in either case |
 | `MIN_FREE_MIB` | `2048` | Integer 256–1048576; free-space reserve threshold |
@@ -2104,6 +2338,18 @@ includes poweroff. Do not confuse the two units.
 
 ## Set up Starlink diagnostics
 
+Ethernet configuration and snow-melt readback are covered in
+[Starlink local control](docs/STARLINK.md). The normal collector only reads:
+it does not reset, reboot, stow or change heating on the antenna.
+
+The installation bundle defaults to `STARLINK_SNOW_MELT=read`. Setting it to `off`
+explicitly requests one write attempt during setup, followed by readback;
+failure stops that installer stage. The supported app path is Settings →
+Starlink → Snow Melt → Off ([Starlink help](https://starlink.com/en-ps/support/article/123263fe-abc5-60e0-3af1-9e022aeba80a)).
+Local writes may be refused, and neither that interface nor this software can
+promise that a setting remains unchanged after all future firmware updates
+([reported local API restrictions](https://github.com/sparky8512/starlink-grpc-tools/issues/48)).
+
 The script collects Starlink status with a short `grpcurl` request to the dish's
 local service. This avoids running a browser just to read diagnostic information
 ([query example](https://rcastellotti.dev/posts/development-of-a-framework-for-retrieval-of-parameters-of-the-starlink-dish)).
@@ -2286,7 +2532,7 @@ stopping services or editing a running installation.
 
 ### Understand the three time limits
 
-- **Harvest budget:** one hour of cumulative native export time by default,
+- **Harvest budget:** one shared hour for source collection by default,
   not a new hour for each daily chunk.
 - **Maintenance idle window:** 10 minutes by default, only when `EXECUTE=ssh`
   or `EXECUTE=vnc`; detected sessions reset this idle countdown.
@@ -2471,8 +2717,8 @@ label as a data-migration task, not just a cosmetic configuration edit.
 
 1. Confirm the new account's write permission and exact destination with direct
    rclone listings and a small verified test upload.
-2. Check that TELE supports that path; the team-root/space limitation described
-   above must be resolved or an explicitly validated setup used first.
+2. Check the exact path, including spaces and any leading team-root slash;
+   do not confuse a personal folder with the intended shared/team destination.
 3. Stop changes to configuration/state while a collection is active. Arrange
    the new local settings and matching remote `config.txt` during maintenance.
 4. Preserve existing pending files and the old verified archive until the new
@@ -2494,6 +2740,13 @@ REQUEST_ID=destination-change-2026-09-29
 If the label changes, a different local state directory is selected. Do not
 copy old verified acknowledgments into an empty new destination and assume
 they describe uploads there.
+
+New acknowledgments record the verified remote path. A different path, or an
+older acknowledgment without that field, is treated as needing verification
+again within the collection budget. Identical remote contents are still skipped
+on normal upload; this can nevertheless require substantial recorder work.
+Changing the account/namespace behind the same remote name is not detectable
+from that path alone, so still use a fresh reconciliation request for that migration.
 
 Data already overwritten on the recorder cannot be recovered by reconciliation.
 If it exists only in the previous cloud archive or a retained local copy, plan
@@ -2875,27 +3128,9 @@ unnecessary account information.
 
 ### Installation script
 
-Once the software has been properly tested, I want to make an installation
-script that downloads it from GitHub and handles the Ubuntu setup. Ideally,
-the only input will be a private text file containing the station settings
-and credentials.
-
-The installer will need to cover the following:
-
-- **Source:** obtain a pinned approved GitHub release with integrity checking.
-- **OS setup:** install approved dependencies and configure the required users,
-  directories and services without an unplanned full OS upgrade.
-- **Private input:** read one protected provisioning file if desired, then split
-  secrets and non-secret station identity into protected runtime files.
-- **Nanometrics:** install an authorized vendor package with a known version and
-  trusted checksum, using a download/distribution method permitted by the vendor.
-- **Cloud authorization:** import valid Dropbox OAuth configuration and enroll
-  Tailscale deliberately; email passwords alone are insufficient.
-- **Validation:** check device identity, paths, hashes, service syntax and access.
-- **Versions:** support immutable releases and rollback without deleting state.
-- **Activation:** require a distinct, explicit lab-to-field activation step.
-- **BIOS:** present the physical wake/USB-power checklist unless an actual
-  supported firmware-management interface is established.
+Use [INSTALL.sh](INSTALL.sh) and the [master installer instructions](#master-installer)
+for software setup. Keep a tested Git revision and the private setup file for
+each station; BIOS and relay checks remain physical deployment steps.
 
 I want setup to be easier without making it easier to switch off the wrong
 computer or lose data. Field activation should remain a separate step, with
@@ -2903,9 +3138,9 @@ credentials kept private and the recorder left intact.
 
 ### Additional documentation within this repository
 
-`docs/DESIGN.md` explains how the collection and recovery work,
-`docs/VALIDATION.md` covers the tests, and `docs/REVIEW_SUMMARY.md` records
-the software review.
+`docs/DESIGN.md` explains collection and recovery, `docs/VALIDATION.md` covers
+acceptance tests, `docs/MODULES.md` explains collector extensions, and
+`docs/STARLINK.md` covers local Ethernet access and snow-melt settings.
 
 I would like this guide to remain useful as a complete set of build and setup
 notes, including the hardware links and photographs. If you build a station

@@ -1,0 +1,51 @@
+# Copy to /root/tele-setup.conf, root:root 0600. Do not commit the filled file.
+# Literal KEY=value, no wrapping quotes, no inline comments or shell expansion.
+# Defaults shown below. This file is authoritative for generated LOCAL settings.
+station=station01
+OPERATOR_USER=tele
+
+# Account must already have accepted the shared/team folder invitation.
+# Preserve / for the team root. Spaces are allowed.
+RCLONE_REMOTE=tele_dropbox
+DROPBOX_ROOT=/Team Folder/Project
+# Choose an existing private rclone configuration OR full rclone authorize JSON.
+# Existing advanced root_namespace/client settings are preserved by config import.
+RCLONE_CONFIG_FILE=/root/project-rclone.conf
+# DROPBOX_TOKEN_JSON={"access_token":"...","token_type":"bearer","refresh_token":"...","expiry":"..."}
+
+EMAIL_FROM=station@gmail.com
+EMAIL_TO=operator@example.com
+EMAIL_PASSWORD=REPLACE_WITH_16_CHARACTER_GOOGLE_APP_PASSWORD
+# Separate Google app password, not the normal account password; no display spaces.
+
+# Verify by-id and serial yourself; installer does not guess a block device.
+RECORDER_DEVICE=/dev/disk/by-id/usb-REPLACE_WITH_REAL_RECORDER_ID
+RECORDER_SERIAL=REPLACE_WITH_REAL_SERIAL
+# Optional multi-recorder setup instead of the two lines above. New outer
+# namespaces are pegasus_harvester/<id>/; this is a deliberate layout choice.
+# SOURCES_JSON=[{"id":"pegasus01","device":"/dev/disk/by-id/usb-...","serial":"..."},{"id":"pegasus02","device":"/dev/disk/by-id/usb-...","serial":"..."}]
+
+# Omit package fields only if the approved native binary is already installed.
+HARVESTER_DEB=/root/PegasusHarvester-approved.deb
+HARVESTER_SHA256=REPLACE_WITH_TRUSTED_PACKAGE_SHA256
+# HARVESTER_URL=https://approved-public-host.example/package.deb
+# PEGASUS_BIN=/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
+
+# Needed only for initial enrollment. Tailnet policy must permit this device/user.
+# Prefer a one-use, appropriately tagged key; do not paste it into shell commands.
+TAILSCALE_AUTH_KEY=REPLACE_WITH_ENROLLMENT_KEY
+ENABLE_VNC=yes
+VNC_PASSWORD=CHANGEIT
+DISABLE_SLEEP=yes
+EXECUTE=auto
+HARVEST_BUDGET_SECONDS=3600
+MAINTENANCE_IDLE_SECONDS=600
+EMERGENCY_SECONDS=14400
+RETAIN_LAST_BATCH=yes
+UPLOAD_TEST=yes
+EMAIL_TEST=yes
+
+STARLINK_ADDRESS=192.168.100.1:9200
+# read never changes the antenna. off is explicit permission for one write +
+# readback; PermissionDenied aborts rather than claiming success.
+STARLINK_SNOW_MELT=read

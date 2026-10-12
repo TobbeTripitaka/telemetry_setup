@@ -8,8 +8,9 @@ from the device and service testing still required before field use.
 
 - **Power:** weekly BIOS wake-up; USB 5 V energizes the Starlink relay; no new
   external power controller. Normal completion and failures should power off.
-- **Budgets:** native harvesting gets at most 3,600 cumulative seconds plus
-  termination grace. The independent emergency timer requests poweroff at four
+- **Budgets:** sources share a default 3,600-second collection allowance;
+  device/network calls and native exports respect the remaining deadline, with
+  bounded termination grace and local bookkeeping overhead. The emergency timer requests poweroff at four
   hours from boot, including during remote sessions.
 - **Maintenance:** only `ssh`/`vnc` modes wait after the collection/report stages.
   Default is 600 idle seconds. Detected active connections keep resetting the
@@ -98,6 +99,15 @@ One-way checking only requires source files to exist and match remotely
 
 ## Module responsibilities
 
+`tele.sh` exposes a top-to-bottom lifecycle. `lib/workflow.sh` implements shared
+stages, while `lib/sources.sh` isolates source profiles and dispatches trusted
+`modules/` providers. See [the module contract](MODULES.md) for extension and
+multi-recorder namespace rules; a profile is never sourced as executable code.
+
+Bench `--check` and `--once` modes do not request shutdown and refuse to overlap
+an active field service/timer. Field mode retains the service-level and separate
+timer shutdown mechanisms.
+
 - **`tele.sh`:** short orchestration, exclusive lock, stage status, best-effort
   failure notification, maintenance entry. Shutdown is owned outside the script.
 - **`common.sh`:** stderr logging, atomic durable replacements, command bounds,
@@ -162,8 +172,10 @@ removed instead of retaining another deletion/control path.
 Use a reviewed branch and a tagged, tested release with an exact commit/checksum.
 Never update an inaccessible field node directly from a moving `main` branch.
 Keep recorder progress, pending files and secrets outside versioned code.
-The future installer must support rollback of code without rolling back upload
-acknowledgments or deleting pending data.
+`INSTALL.sh` deploys a revision-labelled release and private settings without
+rolling back upload acknowledgments or deleting pending data. It offers plan,
+per-stage confirmation and automatic modes, with separate next-boot field activation.
 
-No GitHub commit, push, pull request, live Dropbox write, device read/write, email,
-poweroff, or field deployment was performed during this candidate's local tests.
+Local automated tests do not perform live Dropbox writes, device access, email,
+poweroff or field deployment. Source-code publication is separate from station
+installation and does not prove acceptance on the actual hardware.

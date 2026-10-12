@@ -99,13 +99,18 @@ harvest_cycle() {
                 '.schema==1 and .recorder==$r and (.closed==0 or .closed==1)' "$ack" >/dev/null || return 1
             # A completed forced request is not a standing instruction to resend
             # identical recent files at every weekly boot.
-            if [[ $(jq -r .request "$ack") == "$request" ]]; then force=none; fi
-            if (( cursor < overlap_floor )) && [[ $(jq -r .closed "$ack") == 1 ]]; then
+            local same_destination=no
+            [[ $(jq -r '.destination // ""' "$ack") != "$REMOTE_DATA" ]] || same_destination=yes
+            if [[ $same_destination == yes && $(jq -r .request "$ack") == "$request" ]]; then force=none; fi
+            if (( cursor < overlap_floor )) && [[ $same_destination == yes && $(jq -r .closed "$ack") == 1 ]]; then
                 if [[ $HARVEST_MODE == incremental ||
                       $(jq -r .request "$ack") == "$request" ]]; then continue; fi
             fi
         fi
         remaining=$((HARVEST_BUDGET_SECONDS - HARVEST_USED_SECONDS))
+        if [[ -n ${COLLECTION_DEADLINE:-} ]] && (( COLLECTION_DEADLINE - $(uptime_seconds) < remaining )); then
+            remaining=$((COLLECTION_DEADLINE - $(uptime_seconds)))
+        fi
         (( remaining > 0 )) || { log "Harvest budget exhausted; remaining days resume next boot"; return 1; }
         disk_has_reserve || { die "Insufficient free space"; return 1; }
         log "Harvesting UTC day $day (native paths, 24-hour files)"

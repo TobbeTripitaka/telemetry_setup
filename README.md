@@ -12,7 +12,7 @@ The system has been running in Australia, and the Antarctic station has been
 transmitting data since February 2026. I am still testing this software update,
 so please contact me before using it at an unattended field site.
 
-<img src="img/GRIT%30_Final.png" width="120" alt="GRIT project logo">
+<img src="img/GRIT%20_Final.png" width="120" alt="GRIT project logo">
 
 ## Hardware and setup
 
@@ -60,13 +60,14 @@ a large PSF image.
 Each run:
 
 1. Loads the station settings and checks its configuration.
-2. Collects Starlink diagnostics and retries complete pending uploads.
-3. Identifies the recorder using its whole-disk by-id path and serial.
+2. Checks Dropbox and reads Starlink diagnostics.
+3. Runs each configured recorder independently, retrying its pending uploads
+   before identifying its whole-disk by-id path and serial.
 4. Exports the required UTC days into separate local working directories.
 5. Uploads files and verifies their Dropbox-compatible content hashes.
 6. Records progress only after verification.
 7. Uploads logs, attempts a status email and opens a maintenance window if requested.
-8. Powers down.
+8. In field mode, exits into systemd-controlled poweroff. Bench mode does not shut down.
 
 An unfinished export is not uploaded as if it were complete. Completed exports
 that have not been verified in Dropbox stay on the computer for another attempt,
@@ -102,12 +103,69 @@ For shared/team Dropbox storage, authorize the account that has accepted the
 invitation and has permission to add files. I recommend a project-owned uploader
 account rather than leaving a field computer tied to a personal account.
 
-**Team-folder limitation:** TELE's path parser currently strips a leading `/`
-and rejects spaces in `DROPBOX_ROOT`. Those can matter for Dropbox team paths;
-this documentation update does not fix that code issue. Follow the
-[destination checks and limitation notice](INSTALLATION.md#dropbox-team-folder-limitation-in-tele)
-before using a team folder, rather than trying a full collection against an
-uncertain destination.
+`DROPBOX_ROOT` accepts spaces and preserves a leading `/`, including team-root
+paths such as `/Research Team/Project`. Check the exact destination with rclone
+and a small test upload before collecting a full backlog; a valid path is not
+proof that the authorized account has access to the intended team folder.
+
+## Install and test
+
+Use [INSTALL.sh](INSTALL.sh) on the Ubuntu station. Start with the
+[private setup example](config/setup.conf.example) and follow the
+[master installer instructions](INSTALLATION.md#master-installer); do not put
+real credentials in the repository.
+
+```bash
+# Run on: Ubuntu station, from the reviewed checkout.
+bash INSTALL.sh --mode plan
+sudo bash INSTALL.sh --config /root/tele-setup.conf --mode confirm
+# For repeated, prepared deployments instead:
+sudo bash INSTALL.sh --config /root/tele-setup.conf --mode auto
+```
+
+The installer fetches one Git revision, installs dependencies and the supplied
+Nanometrics package, configures Linux, Dropbox, email, Tailscale, VNC and systemd,
+and runs setup checks. It does not reboot or activate shutdown-capable operation
+unless `--enable-field` is explicitly supplied, which enables it for the next boot.
+BIOS wake settings, USB power behaviour and vendor/account authorization still
+need preparation. A normal email/password pair cannot replace Dropbox OAuth.
+
+After installation:
+
+```bash
+# Run on: Ubuntu bench station. Check identity without collecting, emailing or shutting down.
+sudo /opt/tele/current/tele.sh --check
+# A real collection/upload/email run, without a maintenance wait or shutdown.
+sudo /opt/tele/current/tele.sh --once
+```
+
+Both commands refuse to run while the field collector or emergency timer is active.
+Use stable bench power: bench mode deliberately does not provide automatic poweroff.
+
+## Adding recorders and modules
+
+`tele.sh` shows the run sequence from top to bottom. Shared workflow functions
+are in `lib/`; collector implementations belong in `modules/`, with one private
+data-only profile per source in `/etc/tele/sources.d/`.
+
+With no source profiles, the single-recorder settings in `node.conf` keep the
+existing `pegasus_harvester/` layout. Explicit profiles use
+`pegasus_harvester/<source-id>/` so recorders do not overwrite one another; the
+Harvester paths inside remain unchanged. Moving an existing recorder to a profile
+is a deliberate namespace migration, not an automatic relocation of pending files.
+See the [module contract and examples](docs/MODULES.md) before changing that layout.
+
+## Starlink snow melt
+
+The [Starlink instructions](docs/STARLINK.md) cover Ethernet readback and an
+explicitly confirmed attempt to set Off. The local interface exposes the setting,
+but firmware may refuse writes; the supported app setting is
+Settings → Starlink → Snow Melt → Off ([Starlink help](https://starlink.com/en-ps/support/article/123263fe-abc5-60e0-3af1-9e022aeba80a),
+[local API restrictions](https://github.com/sparky8512/starlink-grpc-tools/issues/48)).
+
+TELE does not silently reconfigure the antenna on each wake. Verify the setting
+after a power cycle and firmware changes, and consider snow-obstruction risk
+before disabling heating at a snowy site.
 
 ## Collection modes
 
@@ -191,8 +249,9 @@ before entering account details on the station.
 Battery protection is important here. A failed upload or stuck process must not
 leave the computer and Starlink running indefinitely.
 
-- **Harvesting:** the default budget is one hour of cumulative native export
-  time, with a bounded termination grace period.
+- **Collection:** the default one-hour allowance is shared between sources,
+  including pending transfers and device inspection. External calls are bounded;
+  termination grace and local bookkeeping can extend wall-clock time slightly.
 - **Normal shutdown:** the systemd service requests poweroff when the collector
   exits, including after a failure.
 - **Emergency shutdown:** a separate timer requests poweroff four hours after
@@ -219,9 +278,10 @@ On an Ubuntu development or bench machine with the dependencies installed:
 ```bash
 # Run on: Ubuntu bench/development machine, inside the source checkout.
 bash tests/run.sh
-shellcheck -S warning -e SC2034 tele.sh lib/common.sh lib/config.sh \
+bash tests/installer.sh
+shellcheck -S warning -e SC2034 INSTALL.sh tele.sh lib/common.sh lib/config.sh \
   lib/hardware.sh lib/harvest.sh lib/upload.sh lib/notification.sh \
-  lib/remote.sh scripts/*.sh tests/*.sh
+  lib/remote.sh lib/workflow.sh lib/sources.sh lib/starlink.sh modules/*.sh scripts/*.sh tests/*.sh
 ```
 
 SC2034 is excluded because the sourced Bash modules share configuration variables.
@@ -251,13 +311,13 @@ the upload destination.
 - **[Design notes](docs/DESIGN.md):** collection, verification and recovery behaviour.
 - **[Test checklist](docs/VALIDATION.md):** checks to complete before deployment.
 
-Once the setup is properly tested, I want to add an installer that downloads the
-software from GitHub and handles the Ubuntu configuration using one private
-station-settings file. Camera and other sensor integrations can be added later;
-the camera module is currently just a placeholder.
+The installer and module framework still need end-to-end bench testing on the
+target Ubuntu computer. Automated tests use mocks and local files, not a real
+Nanometrics recorder, live Dropbox or antenna. Camera support is not implemented;
+the disabled module template is for future development.
 
 If you build a station or find something that can be improved, please get in
 touch or open an issue in this repository. I would like to keep the setup
 practical, easy to understand and reliable enough to leave in the field.
 
-Software: `4.0.1`. Documentation updated: 29 September 2026.
+Software: `4.0.1`. Documentation updated: 12 October 2026. Record the Git revision as well.

@@ -9,3 +9,8 @@ RCLONE_CONFIG=/etc/tele/rclone.conf
 PEGASUS_BIN=/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
 VNC_SERVICE=tele-vnc@tele.service
 VNC_PORT=5901
+# Optional multi-device profiles. If empty/absent, use the recorder above.
+SOURCE_PROFILES_DIR=/etc/tele/sources.d
+STARLINK_ADDRESS=192.168.100.1:9200
+# Readback/alert only; runtime never silently changes antenna settings.
+STARLINK_EXPECT_SNOW_OFF=no

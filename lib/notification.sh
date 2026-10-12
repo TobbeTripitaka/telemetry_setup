@@ -3,10 +3,22 @@ collect_starlink_diagnostics() {
     local file="$LOG_ROOT/$RUN_ID-starlink.json" temp="$LOG_ROOT/$RUN_ID-starlink.partial"
     command -v grpcurl >/dev/null || { log "grpcurl missing: Starlink diagnostics unavailable"; return 1; }
     # Read-only get_status; no browser, dish control, speed test or history flood.
-    if timeout -k 5 25 grpcurl -plaintext -max-time 20 -d '{"get_status":{}}' \
-        192.168.100.1:9200 SpaceX.API.Device.Device/Handle >"$temp" 2>>"$LOG_FILE" &&
+    if starlink_rpc '{"get_status":{}}' >"$temp" 2>>"$LOG_FILE" &&
         jq -e '.dishGetStatus | type=="object"' "$temp" >/dev/null; then
-        atomic_install "$temp" "$file"
+        atomic_install "$temp" "$file" || return 1
+        local config="$LOG_ROOT/$RUN_ID-starlink-config.json" mode
+        if starlink_rpc '{"dish_get_config":{}}' >"$config" 2>>"$LOG_FILE"; then
+            mode=$(starlink_snow_mode <"$config") || mode=UNKNOWN
+            log "Starlink snow-melt mode: $mode"
+            if [[ ${STARLINK_EXPECT_SNOW_OFF:-no} == yes && $mode != ALWAYS_OFF ]]; then
+                log "WARNING: snow melt is not verified Off; set it through the app and recheck"
+                return 1
+            fi
+        elif [[ ${STARLINK_EXPECT_SNOW_OFF:-no} == yes ]]; then
+            log "WARNING: snow-melt configuration unreadable"
+            return 1
+        fi
+        return 0
     else
         log "Starlink diagnostics failed (data collection continues)"
         return 1
@@ -41,7 +53,8 @@ send_notification() {
     password=${EMAIL_PASSWORD//\\/\\\\}; password=${password//\"/\\\"}
     from=${EMAIL_FROM//\\/\\\\}; from=${from//\"/\\\"}
     printf 'user = "%s:%s"\n' "$from" "$password" >"$auth"
-    pending=$(find "$SPOOL" -mindepth 1 -maxdepth 1 -type d -printf '.\n' | wc -l)
+    pending=$(find "${STATION_STATE_ROOT:-$STATE_ROOT}" -type d \
+        -path '*/pending/*' \( -name '20??-??-??' -o -name '.partial-*' \) -printf '.\n' | wc -l)
     {
         printf 'From: %s\r\nTo: %s\r\nSubject: TELE %s %s\r\n' "$EMAIL_FROM" "$EMAIL_TO" "$STATION_NAME" "$status"
         printf 'MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'
@@ -49,7 +62,11 @@ send_notification() {
             "$STATION_NAME" "$RUN_ID" "$status" "$HARVEST_MODE" "$pending"
         printf 'Dropbox: %s\nPost-run mode: %s\nIdle maintenance window: %ss\n' \
             "$REMOTE_BASE" "$EXECUTE" "$MAINTENANCE_IDLE_SECONDS"
-        printf 'Emergency power-off timer remains active, including during remote sessions.\n\n'
+        printf 'Run mode: %s\nSources succeeded: %s; failed: %s\n' \
+            "${RUN_MODE:-bench-helper}" "${SOURCES_OK:-unknown}" "${SOURCES_FAILED:-unknown}"
+        if [[ ${RUN_MODE:-} == field ]]; then
+            printf 'Emergency power-off timer remains active, including during remote sessions.\n\n'
+        else printf 'Bench/check helper: no poweroff is requested by this script.\n\n'; fi
         tail -n 100 "$LOG_FILE"
     } >"$mail"
     local rc=0

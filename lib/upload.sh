@@ -73,8 +73,11 @@ upload_batch() {
     cloud copy "$batch/files" "$REMOTE_DATA" --no-traverse "${flags[@]}" >>"$LOG_FILE" 2>&1 || return 1
     cloud check "$batch/dropbox.sum" "$REMOTE_DATA" --checkfile Dropbox --one-way \
         >>"$LOG_FILE" 2>&1 || return 1
+    # An acknowledgment belongs to the destination actually verified, not just a day.
+    jq --arg destination "$REMOTE_DATA" '.destination=$destination' \
+        "$batch/meta.json" >"$batch/receipt.json" || return 1
     # Keep a small remote receipt to diagnose/rebuild local state later.
-    cloud copyto "$batch/meta.json" "$REMOTE_BASE/tele_logfiles/receipts/$RECORDER_SERIAL/$day.json" \
+    cloud copyto "$batch/receipt.json" "$REMOTE_BASE/tele_logfiles/receipts/$RECORDER_SERIAL/$day.json" \
         --checksum >>"$LOG_FILE" 2>&1 || return 1
     cloud copyto "$batch/dropbox.sum" "$REMOTE_BASE/tele_logfiles/receipts/$RECORDER_SERIAL/$day.dropbox.sum" \
         --checksum >>"$LOG_FILE" 2>&1 || return 1
@@ -82,7 +85,7 @@ upload_batch() {
         --checksum >>"$LOG_FILE" 2>&1 || return 1
     # The acknowledgment is the LAST correctness-changing action.
     temp=$(mktemp "$VERIFIED/.$day.XXXXXX") || return 1
-    cp -- "$batch/meta.json" "$temp" || return 1
+    cp -- "$batch/receipt.json" "$temp" || return 1
     atomic_install "$temp" "$VERIFIED/$day.json" || return 1
     log "Verified in Dropbox: $day"
     retain_or_remove_batch "$batch" || return 1

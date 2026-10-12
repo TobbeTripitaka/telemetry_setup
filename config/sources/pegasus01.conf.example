@@ -1,0 +1,5 @@
+# /etc/tele/sources.d/pegasus01.conf, root:root, mode 0600.
+# Explicit profiles use separate local state and pegasus_harvester/pegasus01/.
+TYPE=pegasus
+RECORDER_DEVICE=/dev/disk/by-id/REPLACE_WITH_WHOLE_DISK_ID
+RECORDER_SERIAL=REPLACE_WITH_DISK_SERIAL

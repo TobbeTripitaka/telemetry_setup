@@ -36,10 +36,13 @@ node_key() {
             die "Set station in /etc/tele/config.txt, not node.conf"
             return 1 ;;
         DROPBOX_ROOT)
-            [[ $value =~ ^[A-Za-z0-9_./-]*$ && /$value/ != *'/../'* ]] || return 1
-            value=${value#/}; value=${value%/} ;;
-        PEGASUS_BIN|RCLONE_CONFIG|RECORDER_DEVICE)
+            value=$(normalize_dropbox_root "$value") || return 1 ;;
+        PEGASUS_BIN|RCLONE_CONFIG|RECORDER_DEVICE|SOURCE_PROFILES_DIR)
             [[ $value == /* && $value != *$'\t'* ]] || return 1 ;;
+        STARLINK_ADDRESS)
+            [[ $value =~ ^[A-Za-z0-9.-]+:[0-9]{1,5}$ ]] || return 1 ;;
+        STARLINK_EXPECT_SNOW_OFF)
+            [[ $value == yes || $value == no ]] || return 1 ;;
         VNC_SERVICE)
             [[ $value =~ ^tele-vnc@[a-zA-Z0-9_-]+\.service$ ]] || return 1 ;;
         VNC_PORT)
@@ -53,6 +56,17 @@ integer_between() {
     [[ $1 =~ ^(0|[1-9][0-9]{0,7})$ ]] && (( $1 >= $2 && $1 <= $3 ))
 }
 
+normalize_dropbox_root() {
+    local value=$1 part
+    [[ ! $value =~ [[:cntrl:]] && $value != *\\* && $value != *'//'* ]] || return 1
+    local -a parts
+    IFS=/ read -r -a parts <<<"$value"
+    for part in "${parts[@]}"; do [[ $part != . && $part != .. ]] || return 1; done
+    while [[ $value != / && $value == */ ]]; do value=${value%/}; done
+    # Keep the leading slash: Dropbox Business uses it to select the team root.
+    printf '%s' "$value"
+}
+
 load_node_config() {
     local file=$1
     check_private_file "$file" || { die "Unsafe node configuration"; return 1; }
@@ -60,10 +74,12 @@ load_node_config() {
     DROPBOX_ROOT='' VNC_SERVICE=tele-vnc@tele.service VNC_PORT=5901
     PEGASUS_BIN=/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
     RCLONE_CONFIG=/etc/tele/rclone.conf
+    SOURCE_PROFILES_DIR=/etc/tele/sources.d
+    STARLINK_ADDRESS=192.168.100.1:9200 STARLINK_EXPECT_SNOW_OFF=no
     read_kv "$file" node_key || { die "Invalid node configuration"; return 1; }
-    [[ -n $RCLONE_REMOTE && -n $RECORDER_SERIAL &&
-       $RECORDER_DEVICE == /dev/disk/by-id/* && $RECORDER_DEVICE != *-part[0-9]* ]] ||
-        { die "Remote, recorder serial and whole-disk by-id path required"; return 1; }
+    [[ -n $RCLONE_REMOTE ]] || { die "RCLONE_REMOTE is required"; return 1; }
+    # Recorder identity is validated by the provider. It may instead come from
+    # several private sources.d profiles, so it is no longer mandatory here.
 }
 
 runtime_defaults() {

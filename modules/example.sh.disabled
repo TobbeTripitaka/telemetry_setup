@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Copy to modules/camera.sh (for example), implement these functions and add
+# /etc/tele/sources.d/camera01.conf with TYPE=camera and private settings.
+# Nothing in this disabled template runs automatically.
+provider_validate() {
+    # Validate an explicit allow-list of SOURCE_SETTINGS keys. Never eval/source data.
+    die "Implement the collector configuration contract first"
+}
+provider_target() { printf '%s\n' camera; }
+provider_check() {
+    # Inspect connectivity/authentication without capture, deletion or power changes.
+    die "Implement read-only device checks"
+}
+provider_collect() {
+    # Use SPOOL/VERIFIED/REMOTE_DATA for this source only.
+    # Bound commands, freeze manifests, verify uploads before acknowledging.
+    # Check COLLECTION_DEADLINE. Return nonzero on failure; never power off.
+    die "Implement collection and verified recovery; never return success for a stub"
+}

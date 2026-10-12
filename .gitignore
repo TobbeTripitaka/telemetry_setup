@@ -6,6 +6,8 @@
 /credentials.txt
 /config/node.conf
 /config/credentials.txt
+/tele-setup.conf
+/config/setup.conf
 *.conf.secret
 rclone.conf
 *.deb

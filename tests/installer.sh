@@ -152,6 +152,35 @@ test_setup_requires_exact_vnc_password_length() {
     set -e
     [[ $rc != 0 ]]
 }
+test_documented_installer_example_parses() {
+    source "$ROOT/INSTALL.sh"
+    CONFIG="$BASE/example-private.txt"
+    install -m 600 "$ROOT/credentials.example.txt" "$CONFIG"
+    parse_setup
+    [[ $(get EMAIL_PASSWORD) == REPLACE_WITH_YOUR_16_CHARACTER_GOOGLE_APP_PASSWORD &&
+       $(get TAILSCALE_AUTH_KEY) == tskey-REPLACE_WITH_YOUR_GENERATED_DEVICE_AUTH_KEY &&
+       $(get VNC_PASSWORD) == REPLACE_WITH_YOUR_8_CHARACTER_VNC_PASSWORD ]]
+}
+test_unmodified_installer_example_cannot_deploy() {
+    setup_validation
+    CONFIG="$BASE/unmodified-private.txt"
+    install -m 600 "$ROOT/credentials.example.txt" "$CONFIG"
+    declare -gA SETUP=()
+    parse_setup
+    set +e
+    (set -e; validate_setup)
+    local rc=$?
+    set -e
+    [[ $rc != 0 ]]
+}
+test_email_only_example_parses() {
+    source "$ROOT/lib/common.sh"
+    source "$ROOT/lib/config.sh"
+    read_kv "$ROOT/config/credentials.txt.example" credential_key
+    [[ $EMAIL_FROM == REPLACE_WITH_SENDER@gmail.com &&
+       $EMAIL_TO == REPLACE_WITH_REPORT_RECIPIENT@example.com &&
+       $EMAIL_PASSWORD == REPLACE_WITH_YOUR_16_CHARACTER_GOOGLE_APP_PASSWORD ]]
+}
 for test in $(declare -F | awk '$3 ~ /^test_/ {print $3}' | sort); do
     set +e
     (set -Eeuo pipefail; "$test") >"$BASE/$test.out" 2>&1

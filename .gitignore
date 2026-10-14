@@ -2,7 +2,9 @@
 .DS_Store
 **/.DS_Store
 
-# Ignore a single file in the repo root
+# Real local credentials/settings are private.
+# credentials.example.txt and config/credentials.txt.example are intentionally
+# NOT ignored: keep only placeholders/comments in those tracked templates.
 /credentials.txt
 /config/node.conf
 /config/credentials.txt

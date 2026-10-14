@@ -9,7 +9,7 @@ This guide brings together the hardware, suppliers, photographs and software
 setup I use. I've included the practical details so that another station can
 be built without having to work out the same things again.
 
-**Updated:** 12 October 2026. The software covered here is `4.0.1`.
+**Updated:** 13 October 2026. The software covered here is `4.0.1`.
 Record the exact code revision used for testing as described in the installation section.
 
 > **Testing is still in progress.** Please contact me before using this update
@@ -490,11 +490,17 @@ On the Ubuntu station, obtain and review the repository as described in
 
 ```bash
 # Run on: Ubuntu station, inside the reviewed source checkout.
-sudo install -m 600 -o root -g root config/setup.conf.example /root/tele-setup.conf
+sudo install -m 600 -o root -g root credentials.example.txt /root/tele-setup.conf
 sudo nano /root/tele-setup.conf
 ```
 
-Replace every placeholder. The installer uses literal `KEY=value` lines:
+The tracked [credentials.example.txt](credentials.example.txt) includes comments
+explaining each credential and fake format examples, without usable passwords.
+Copy it first: `.gitignore` does not protect a tracked example if real secrets
+are accidentally pasted into it. `config/credentials.txt.example` is a different,
+email-only template and does not contain the full installer's settings.
+
+Replace every placeholder in the private copy. The installer uses literal `KEY=value` lines:
 no shell expansion, no wrapping quotes and no inline comments. Keep embedded
 OAuth/profile JSON on one line. Never post the filled file or diagnostic output
 containing its contents.

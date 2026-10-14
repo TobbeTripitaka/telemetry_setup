@@ -111,9 +111,15 @@ proof that the authorized account has access to the intended team folder.
 ## Install and test
 
 Use [INSTALL.sh](INSTALL.sh) on the Ubuntu station. Start with the
-[private setup example](config/setup.conf.example) and follow the
+[commented credentials and setup example](credentials.example.txt) and follow the
 [master installer instructions](INSTALLATION.md#master-installer); do not put
 real credentials in the repository.
+
+`credentials.example.txt` is tracked deliberately; it contains only placeholders
+and explanations of the Gmail app password, Dropbox OAuth, Tailscale auth key and
+VNC password. Copy it to a protected private file before editing, never replace
+the placeholders in the tracked example. `config/credentials.txt.example` is the
+separate email-only template for the installed runtime.
 
 ```bash
 # Run on: Ubuntu station, from the reviewed checkout.
@@ -320,4 +326,4 @@ If you build a station or find something that can be improved, please get in
 touch or open an issue in this repository. I would like to keep the setup
 practical, easy to understand and reliable enough to leave in the field.
 
-Software: `4.0.1`. Documentation updated: 12 October 2026. Record the Git revision as well.
+Software: `4.0.1`. Documentation updated: 13 October 2026. Record the Git revision as well.

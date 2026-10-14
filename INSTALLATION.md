@@ -9,7 +9,7 @@ This guide brings together the hardware, suppliers, photographs and software
 setup I use. I've included the practical details so that another station can
 be built without having to work out the same things again.
 
-**Updated:** 13 October 2026. The software covered here is `4.0.1`.
+**Updated:** 14 October 2026. The software covered here is `4.0.1`.
 Record the exact code revision used for testing as described in the installation section.
 
 > **Testing is still in progress.** Please contact me before using this update
@@ -308,6 +308,40 @@ ratings before substituting one.
 There are no software relay commands in this arrangement. The relay follows
 the USB power, which is why the computer's off-state USB behaviour matters.
 
+### Choose and test the USB relay-control port
+
+On the Shuttle Edge computer I tested, the USB 2 port continued supplying power
+after Ubuntu shut down. Moving the relay-control connection to a USB 3 port
+solved the problem: the relay released after shutdown. I could not find a
+relevant BIOS power setting on that unit.
+
+**Start by trying a USB 3 port, but test the actual port on every computer.**
+This is an observation from the tested setup, not a guarantee that all USB 3
+ports switch off or that all USB 2 ports behave the same way. A port that retains
+5 V after shutdown is unsuitable for this voltage-controlled relay arrangement,
+even if it works normally for data transfers.
+
+Before deployment:
+
+1. Connect the relay-control cable directly to the chosen computer USB port.
+2. With Ubuntu running, confirm the relay energizes and Starlink receives power.
+3. Save any work and shut Ubuntu down fully, not into suspend. Leave the
+   computer's normal DC supply connected throughout the test.
+4. Wait about a minute, then confirm the relay has released and Starlink has
+   actually lost power. Measure USB voltage if needed; do not rely only on the
+   computer's screen going blank.
+5. Power the computer on again and confirm that the relay and Starlink restart.
+6. Label the working port and relay cable. Repeat the test on each computer,
+   then verify scheduled BIOS wake and the failure/emergency shutdown tests.
+
+If the relay stays energized, try another port, especially a USB 3 port if the
+first test used USB 2. Do not disconnect the computer's DC supply to make the
+test pass: the field computer must remain supplied so it can wake again.
+
+Do not approve unattended battery operation until both Starlink poweroff and
+the next scheduled wake have been verified. A successful Ubuntu shutdown alone
+does not establish that the USB-controlled Starlink supply is off.
+
 ### Connectors, cabling and Pegasus interface
 
 CTALS is an Australian supplier of waterproof connectors and submersible
@@ -364,6 +398,8 @@ measured startup times and power behaviour rather than relying only on photograp
 - **Cold start:** record the time from BIOS power-on to a usable network.
 - **Data connection:** verify the same recorder identity appears after multiple boots.
 - **Normal shutdown:** confirm computer power state, USB rail state and relay release.
+- **USB port choice:** test and label the exact relay-control port on each unit;
+  see [USB relay-control port testing](#choose-and-test-the-usb-relay-control-port).
 - **Failure shutdown:** repeat after an intentionally failed collection on the bench.
 - **Wake recovery:** confirm the next scheduled BIOS wake still occurs.
 - **Unexpected supply loss:** test only under an approved bench procedure and
@@ -3077,6 +3113,17 @@ sudo stat -c '%a %U %G %n' /etc/tele/vnc /etc/tele/vnc/tele.passwd
 Check the dedicated password file, parent-directory traversal, virtual-desktop
 dependencies and startup script. Verify the Mac SSH tunnel before changing
 server settings; never fix a tunnel problem by exposing VNC publicly.
+
+### Computer shuts down but Starlink or the USB relay stays on
+
+Check the selected USB port before changing the collection script. In my
+Shuttle Edge test, the USB 2 port remained powered after shutdown, while moving
+the relay-control cable to a USB 3 port allowed the relay to release.
+
+Follow the [USB relay-control port test](#choose-and-test-the-usb-relay-control-port)
+with the computer's DC supply still connected. Treat the port change as a fix
+only after confirming actual Starlink power loss, restart and scheduled wake;
+do not assume the same result on another computer without testing it.
 
 ### Computer does not power off
 

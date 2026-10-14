@@ -4,8 +4,7 @@ This is the handover procedure for computers shipped before the TELE software
 has been installed. Ubuntu is already installed; a technician will complete
 software installation, configuration and testing before field deployment.
 
-The aim is to make that work straightforward without rushing an unfinished
-installation before dispatch. A computer that passes the shipping checks below
+Long time might pass between preparation and deployment. A computer that passes the shipping checks below
 is ready for the technician, not yet ready for an unattended station.
 
 Updated: 14 October 2026.
@@ -35,12 +34,6 @@ to switch it off.** Leave recurring unattended wake-up inactive while connected
 to a battery until the collector and shutdown protection have been installed
 and tested.
 
-## Before packing
-
-If time is very short, prioritize administrator access, a complete cold boot and
-clear labelling. The remaining software preparation can be completed by the
-technician after delivery.
-
 ### Check the administrator login
 
 Log in using the account the technician will use. Confirm its username and
@@ -67,8 +60,6 @@ password, not a separate root password
 - **Temporary access:** agree which temporary credentials should be changed or
   removed before final deployment.
 
-Do not introduce passwordless sudo or disable security controls simply to make
-the handover shorter. A normal working administrator login is sufficient.
 
 ### Test shutdown and cold boot
 

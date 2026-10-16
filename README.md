@@ -5,8 +5,7 @@ access are limited. It runs on an Ubuntu edge computer connected to a Nanometric
 Pegasus recorder and uses Starlink to upload data to Dropbox.
 
 The idea is simple: wake the computer, collect and upload the data, send a status
-email, then switch off again. The Pegasus continues recording while the computer
-is off, so there is no need to leave the computer and Starlink running all week.
+email, then switch off again. Limit the up-time to save battery power and ensure that the teh computer powers down after completed tasks. The loggers continues recording while the computer is off, so there is no need to leave the computer and Starlink running.
 
 The system has been running in Australia, and the Antarctic station has been
 transmitting data since February 2026. I am still testing this software update,

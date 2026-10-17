@@ -1,5 +1,7 @@
 # Starlink Ethernet access and snow melt
 
+Still a bit to test here. 
+
 I want to keep antenna power consumption predictable without risking the station's
 only internet connection. TELE therefore reads the antenna in normal operation;
 changes to its settings require a separate explicit action.
@@ -82,10 +84,8 @@ setting and report a mismatch rather than silently changing it.
 
 ## Persistence and acceptance test
 
-I cannot promise that Ethernet can make this setting permanently immutable.
-The cited app instructions explain the available modes but do not establish a
-guarantee across every future reset or firmware update
-([Starlink setting instructions](https://starlink.com/en-ps/support/article/123263fe-abc5-60e0-3af1-9e022aeba80a)).
+I cannot promise that Ethernet can make this setting permanently immutable. The cited app instructions explain the available modes but do not establish a
+guarantee across every future reset or firmware update ([Starlink setting instructions](https://starlink.com/en-ps/support/article/123263fe-abc5-60e0-3af1-9e022aeba80a)).
 
 Set Off through the app if the local write is refused, verify readback on the
 bench, power-cycle the actual computer/relay/antenna, and verify again after

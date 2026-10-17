@@ -14,14 +14,11 @@ The published protobuf schema defines `AUTO=0`, `ALWAYS_ON=1`, `ALWAYS_OFF=2`
 and the `apply_snow_melt_mode` field
 ([DishConfig schema](https://github.com/clarkzjw/starlink-grpc-golang/blob/master/proto/spacex_api/device/dish_config.proto)).
 
-That does not establish write permission on every dish or firmware. A maintainer
-report found local setting writes denied and observed the app communicating with
-a remote HTTPS service instead; that is an older observation, not proof that
-every current firmware behaves identically
+That does not establish write permission on every dish or firmware. A maintainer report found local setting writes denied and observed the app communicating with
+a remote HTTPS service instead; that is an older observation, not proof that every current firmware behaves identically
 ([snow-melt issue and investigation](https://github.com/sparky8512/starlink-grpc-tools/issues/48)).
 
-The supported configuration route is the Starlink app: Settings → Starlink →
-Snow Melt → Off. Starlink describes Off as disabling Snow Melt and its extra
+The supported configuration route is the Starlink app: Settings → Starlink → Snow Melt → Off. Starlink describes Off as disabling Snow Melt and its extra
 power use ([Starlink help](https://starlink.com/en-ps/support/article/123263fe-abc5-60e0-3af1-9e022aeba80a)).
 This does not turn the antenna off or eliminate its normal operating power draw.
 
@@ -36,15 +33,13 @@ ip route get 192.168.100.1
 /opt/tele/current/scripts/STARLINK.sh status
 ```
 
-The helper expects `grpcurl` and `jq`, installed by `INSTALL.sh`. The default
-address can be overridden explicitly, for example:
+The helper expects `grpcurl` and `jq`, installed by `INSTALL.sh`. The default address can be overridden explicitly, for example:
 
 ```bash
 STARLINK_ADDRESS=192.168.100.1:9200 /opt/tele/current/scripts/STARLINK.sh config
 ```
 
-If internet access works but this local address is unreachable, inspect the
-Ethernet/router topology. Do not add a guessed default route or reboot/reset the
+If internet access works but this local address is unreachable, inspect the Ethernet/router topology. Do not add a guessed default route or reboot/reset the
 antenna remotely: the installer deliberately leaves routing untouched.
 
 The equivalent bounded read request is:
@@ -61,8 +56,7 @@ missing or unknown fields as a failure to verify.
 
 ## Optional attempt to turn it off
 
-Only make this change if Off is appropriate for the site. Consider snow and ice
-obstruction risk, especially at the Antarctic station, before prioritizing the
+Only make this change if Off is appropriate for the site. Consider snow and ice obstruction risk, especially at the Antarctic station, before prioritizing the
 power saving.
 
 ```bash

@@ -91,6 +91,7 @@ runtime_defaults() {
     MAINTENANCE_IDLE_SECONDS=600
     HARVEST_BUDGET_SECONDS=3600
     NETWORK_TIMEOUT_SECONDS=300
+    NETWORK_WAIT_SECONDS=1200
     RETAIN_LAST_BATCH=yes
     MIN_FREE_MIB=2048
     OVERLAP_DAYS=2
@@ -109,6 +110,7 @@ runtime_key() {
         MAINTENANCE_IDLE_SECONDS) integer_between "$value" 0 3600 || return 1 ;;
         HARVEST_BUDGET_SECONDS) integer_between "$value" 1 3600 || return 1 ;;
         NETWORK_TIMEOUT_SECONDS) integer_between "$value" 10 600 || return 1 ;;
+        NETWORK_WAIT_SECONDS) integer_between "$value" 0 3600 || return 1 ;;
         RETAIN_LAST_BATCH) [[ $value =~ ^(yes|no)$ ]] || return 1 ;;
         MIN_FREE_MIB) integer_between "$value" 256 1048576 || return 1 ;;
         OVERLAP_DAYS) integer_between "$value" 1 30 || return 1 ;;

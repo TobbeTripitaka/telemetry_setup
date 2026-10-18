@@ -65,7 +65,7 @@ parse_setup() {
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
           OPERATOR_USER|TAILSCALE_AUTH_KEY|ENABLE_VNC|VNC_PASSWORD|\
           STARLINK_ADDRESS|STARLINK_SNOW_MELT|EMERGENCY_SECONDS|DISABLE_SLEEP|\
-          EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|\
+          EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|NETWORK_WAIT_SECONDS|\
           UPLOAD_TEST|EMAIL_TEST) ;;
           *) fail "Unknown setup key: $key" ;;
         esac
@@ -158,6 +158,7 @@ validate_setup() {
     runtime_key EXECUTE "$(get EXECUTE auto)" || fail 'Invalid EXECUTE'
     runtime_key HARVEST_BUDGET_SECONDS "$(get HARVEST_BUDGET_SECONDS 3600)" || fail 'Invalid harvest budget'
     runtime_key MAINTENANCE_IDLE_SECONDS "$(get MAINTENANCE_IDLE_SECONDS 600)" || fail 'Invalid maintenance window'
+    runtime_key NETWORK_WAIT_SECONDS "$(get NETWORK_WAIT_SECONDS 1200)" || fail 'NETWORK_WAIT_SECONDS: 0..3600'
     [[ $EXECUTE != vnc || $(get ENABLE_VNC yes) == yes ]] || fail 'EXECUTE=vnc requires ENABLE_VNC=yes'
     for key in EMAIL_FROM EMAIL_TO EMAIL_PASSWORD; do
         credential_key "$key" "$(get "$key")" || fail "Missing/invalid $key"
@@ -318,6 +319,7 @@ install_release_and_config() {
         printf 'EXECUTE=%s\n' "$(get EXECUTE auto)"
         printf 'HARVEST_BUDGET_SECONDS=%s\n' "$(get HARVEST_BUDGET_SECONDS 3600)"
         printf 'MAINTENANCE_IDLE_SECONDS=%s\n' "$(get MAINTENANCE_IDLE_SECONDS 600)"
+        printf 'NETWORK_WAIT_SECONDS=%s\n' "$(get NETWORK_WAIT_SECONDS 1200)"
         printf 'RETAIN_LAST_BATCH=%s\n' "$(get RETAIN_LAST_BATCH yes)"
     } >"$WORK/config/config.txt"
     for key in EMAIL_FROM EMAIL_TO EMAIL_PASSWORD; do

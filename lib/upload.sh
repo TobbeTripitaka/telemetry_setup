@@ -21,20 +21,35 @@ validate_paths() {
 }
 
 claim_paths() {
-    local root=$1 day=$2 file rel key owner temp
+    # Owner records: line 1 "day:path", line 2 its Dropbox hash. The Harvester
+    # can re-emit an identical out-of-range log/SOH file in every daily export;
+    # identical content is harmless. Different content under one path is not.
+    local root=$1 day=$2 sums=${3:-} file rel key owner temp hash claimed stored
     while IFS= read -r -d '' file; do
         rel=${file#"$root/"}
         key=$(printf '%s' "${rel,,}" | sha256sum)
         key=${key%% *}
         owner="$OWNERS/$key"
-        if [[ -f $owner ]]; then
-            [[ $(<"$owner") == "$day:$rel" ]] ||
-                { die "Native path reused across days/case variants: $rel. Hardware output layout needs review."; return 1; }
-        else
-            temp=$(mktemp "$OWNERS/.new.XXXXXX") || return 1
-            printf '%s\n' "$day:$rel" >"$temp"
-            atomic_install "$temp" "$owner" || return 1
+        hash=''
+        if [[ -n $sums ]]; then
+            hash=$(awk -v p="$rel" 'length($0) > 66 && substr($0, 67) == p {print substr($0, 1, 64); exit}' "$sums")
         fi
+        claimed='' stored=''
+        if [[ -f $owner ]]; then
+            { IFS= read -r claimed; IFS= read -r stored; } <"$owner" || true
+            if [[ $claimed != "$day:$rel" ]]; then
+                if [[ -n $hash && $stored == "$hash" ]]; then
+                    log "Identical file re-exported in $day, already claimed by ${claimed%%:*}: $rel"
+                    continue
+                fi
+                die "Native path reused across days/case variants with different content: $rel. Hardware output layout needs review."
+                return 1
+            fi
+            [[ $stored != "$hash" ]] || continue
+        fi
+        temp=$(mktemp "$OWNERS/.new.XXXXXX") || return 1
+        printf '%s\n%s\n' "$day:$rel" "$hash" >"$temp"
+        atomic_install "$temp" "$owner" || return 1
     done < <(find "$root" -type f -print0)
 }
 
@@ -66,7 +81,7 @@ upload_batch() {
     validate_batch "$batch" || { die "Pending batch integrity check failed: $batch"; return 1; }
     day=$(jq -r .day "$batch/meta.json")
     force=$(jq -r .force "$batch/meta.json")
-    claim_paths "$batch/files" "$day" || return 1
+    claim_paths "$batch/files" "$day" "$batch/dropbox.sum" || return 1
     local -a flags=(--checksum)
     [[ $force != yes ]] || flags=(--ignore-times)
     log "Uploading/verifying $day force=$force"

@@ -19,7 +19,9 @@ main() {
         return "$?"
     fi
 
-    # First load settings, then confirm where uploads will go.
+    # Starlink starts with this computer: wait (bounded) for the internet,
+    # then load settings and confirm where uploads will go.
+    wait_for_internet
     refresh_settings
     check_upload_connection
 

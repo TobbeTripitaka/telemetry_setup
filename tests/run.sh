@@ -257,6 +257,49 @@ test_native_name_collision_stops() {
     claim_paths "$STATE_ROOT/a" 2025-01-01
     expect_failure claim_paths "$STATE_ROOT/b" 2025-01-02
 }
+test_identical_reexport_across_days_allowed() {
+    mkdir "$STATE_ROOT/a" "$STATE_ROOT/b"
+    printf same >"$STATE_ROOT/a/shared.log"
+    printf same >"$STATE_ROOT/b/shared.log"
+    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
+    cloud hashsum Dropbox "$STATE_ROOT/b" --output-file "$STATE_ROOT/b.sum"
+    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum"
+    claim_paths "$STATE_ROOT/b" 2025-01-02 "$STATE_ROOT/b.sum"
+}
+test_changed_reexport_across_days_stops() {
+    mkdir "$STATE_ROOT/a" "$STATE_ROOT/b"
+    printf one >"$STATE_ROOT/a/shared.log"
+    printf two >"$STATE_ROOT/b/shared.log"
+    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
+    cloud hashsum Dropbox "$STATE_ROOT/b" --output-file "$STATE_ROOT/b.sum"
+    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum"
+    expect_failure claim_paths "$STATE_ROOT/b" 2025-01-02 "$STATE_ROOT/b.sum"
+}
+test_open_day_update_rewrites_claim() {
+    mkdir "$STATE_ROOT/a"
+    printf one >"$STATE_ROOT/a/day.mseed"
+    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
+    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum"
+    printf longer >"$STATE_ROOT/a/day.mseed"
+    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
+    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum"
+    [[ $(sed -n 2p "$OWNERS"/*) == "$(cut -c1-64 "$STATE_ROOT/a.sum")" ]]
+}
+test_network_wait_retries_until_reachable() {
+    NETWORK_WAIT_SECONDS=120
+    # verify_remote runs in a bounded subshell, so count attempts in a file.
+    verify_remote() { echo x >>"$STATE_ROOT/tries"; (( $(wc -l <"$STATE_ROOT/tries") >= 3 )); }
+    sleep() { :; }
+    wait_for_internet
+    [[ $(wc -l <"$STATE_ROOT/tries") == 3 ]]
+}
+test_network_wait_is_bounded() {
+    NETWORK_WAIT_SECONDS=0
+    verify_remote() { echo x >>"$STATE_ROOT/tries"; return 1; }
+    sleep() { :; }
+    wait_for_internet
+    [[ $(wc -l <"$STATE_ROOT/tries") == 1 ]]
+}
 test_case_collision_stops() {
     mkdir "$STATE_ROOT/case"
     touch "$STATE_ROOT/case/A" "$STATE_ROOT/case/a"
@@ -518,6 +561,7 @@ test_snow_off_false_success_rejected() {
 test_workflow_readable_order() {
     local calls="$STATE_ROOT/order"
     prepare_run() { RUN_MODE=once; }
+    wait_for_internet() { echo wait >>"$calls"; }
     refresh_settings() { echo settings >>"$calls"; }
     check_upload_connection() { echo cloud >>"$calls"; }
     gather_station_diagnostics() { echo diagnostics >>"$calls"; }
@@ -527,7 +571,7 @@ test_workflow_readable_order() {
     offer_maintenance_window() { echo maintenance >>"$calls"; }
     finish_run() { echo finish >>"$calls"; }
     main --once
-    [[ $(<"$calls") == $'settings\ncloud\ndiagnostics\nsources\nlogs\nemail\nmaintenance\nfinish' ]]
+    [[ $(<"$calls") == $'wait\nsettings\ncloud\ndiagnostics\nsources\nlogs\nemail\nmaintenance\nfinish' ]]
 }
 test_check_does_not_run_collection() {
     prepare_run() { RUN_MODE=check; }

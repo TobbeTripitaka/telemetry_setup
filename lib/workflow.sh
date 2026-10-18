@@ -72,8 +72,32 @@ workflow_exit() {
     exit "$rc"
 }
 
+wait_for_internet() {
+    # Starlink is switched on by the same USB relay as this boot and commonly
+    # needs several minutes. Without this wait, every field run would find no
+    # internet, skip collection and power off again.
+    log "1. Wait for Starlink/Dropbox (up to ${NETWORK_WAIT_SECONDS}s)"
+    local started now deadline attempt_deadline
+    started=$(uptime_seconds)
+    deadline=$((started + NETWORK_WAIT_SECONDS))
+    while :; do
+        now=$(uptime_seconds)
+        attempt_deadline=$(( deadline > now + 60 ? deadline : now + 60 ))
+        if (COLLECTION_DEADLINE=$attempt_deadline; verify_remote) >>"$LOG_FILE" 2>&1; then
+            log "Dropbox reachable after $(( $(uptime_seconds) - started ))s"
+            return 0
+        fi
+        now=$(uptime_seconds)
+        (( now + 30 < deadline )) || break
+        log "Dropbox not reachable yet; retrying in 30s"
+        sleep 30
+    done
+    log "Internet/Dropbox still unreachable after $(( $(uptime_seconds) - started ))s"
+    return 0
+}
+
 refresh_settings() {
-    log "1. Load and validate the station's remote settings"
+    log "1b. Load and validate the station's remote settings"
     load_runtime_config || { RUN_STATUS=PARTIAL; log "Using local settings"; }
 }
 

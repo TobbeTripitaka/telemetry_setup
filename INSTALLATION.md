@@ -2019,6 +2019,7 @@ rather than choosing a guessed upload folder. No configuration is executed as sh
 | `MAINTENANCE_IDLE_SECONDS` | `600` | Integer 0–3600; used only in SSH/VNC modes |
 | `HARVEST_BUDGET_SECONDS` | `3600` | Integer 1–3600; shared source-collection allowance, including device/network calls |
 | `NETWORK_TIMEOUT_SECONDS` | `300` | Integer 10–600; bound for each rclone operation |
+| `NETWORK_WAIT_SECONDS` | `1200` | Integer 0–3600; after boot, keep retrying Dropbox every 30 s while Starlink starts. Collection is skipped only if it is still unreachable after this wait |
 | `RETAIN_LAST_BATCH` | `yes` | `yes` or `no`; pending completed uploads remain in either case |
 | `MIN_FREE_MIB` | `2048` | Integer 256–1048576; free-space reserve threshold |
 | `OVERLAP_DAYS` | `2` | Integer 1–30; revisit recent days as well as unverified/open days |

@@ -42,6 +42,7 @@ test_auto_stage_order_no_field() {
     local calls="$BASE/stages"
     preflight() { echo preflight >>"$calls"; }
     fetch_release() { SHA='test'; echo fetch >>"$calls"; }
+    system_updates() { echo updates >>"$calls"; }
     install_packages() { echo packages >>"$calls"; }
     linux_settings() { echo linux >>"$calls"; }
     install_tailscale() { echo tailscale >>"$calls"; }
@@ -52,7 +53,36 @@ test_auto_stage_order_no_field() {
     enable_field() { echo FIELD >>"$calls"; }
     main --config "$CONFIG" --mode auto
     trap - EXIT
-    [[ $(<"$calls") == $'preflight\nfetch\npackages\nlinux\ntailscale\nconfig\nservices\nchecks\nstarlink' ]]
+    [[ $(<"$calls") == $'preflight\nfetch\nupdates\npackages\nlinux\ntailscale\nconfig\nservices\nchecks\nstarlink' ]]
+}
+test_updates_disable_background_updates() {
+    source "$ROOT/INSTALL.sh"
+    WORK="$BASE/updates-work"; mkdir -p "$WORK"
+    APT_NO_AUTO_CONF="$BASE/99tele-no-automatic-updates"
+    local calls="$BASE/update-calls"
+    declare -gA SETUP=()
+    apt-get() { echo "apt-get $*" >>"$calls"; }
+    snap() { echo "snap $*" >>"$calls"; }
+    systemctl() { echo "systemctl $*" >>"$calls"; }
+    timeout() { while [[ $1 == -* || $1 =~ ^[0-9]+$ ]]; do shift; done; "$@"; }
+    system_updates
+    grep -q 'upgrade --with-new-pkgs' "$calls" &&
+    grep -q 'snap refresh --hold' "$calls" &&
+    grep -q 'disable --now apt-daily.timer' "$calls" &&
+    grep -q 'disable --now apt-daily-upgrade.timer' "$calls" &&
+    grep -q 'Unattended-Upgrade "0"' "$APT_NO_AUTO_CONF"
+}
+test_updates_can_be_left_alone() {
+    source "$ROOT/INSTALL.sh"
+    WORK="$BASE/updates-work2"; mkdir -p "$WORK"
+    APT_NO_AUTO_CONF="$BASE/99tele-untouched"
+    local calls="$BASE/update-calls2"
+    declare -gA SETUP=([SYSTEM_UPGRADE]=no [DISABLE_AUTO_UPDATES]=no)
+    apt-get() { echo "apt-get $*" >>"$calls"; }
+    snap() { echo "snap $*" >>"$calls"; }
+    systemctl() { echo "systemctl $*" >>"$calls"; }
+    system_updates
+    [[ ! -e $calls && ! -e $APT_NO_AUTO_CONF ]]
 }
 test_stage_failure_stops_before_activation() {
     # A fresh strict shell is essential: an if-function context masks errexit.

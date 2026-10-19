@@ -17,6 +17,7 @@ usage() {
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 say() { printf '%s\n' "$*"; }
 declare -gA SETUP=()
+APT_NO_AUTO_CONF=/etc/apt/apt.conf.d/99tele-no-automatic-updates
 MODE=confirm CONFIG='' REF=main SOURCE_DIR='' ENABLE_FIELD=no WORK='' CURRENT_STAGE=arguments
 cleanup() {
     local rc=$?
@@ -65,6 +66,7 @@ parse_setup() {
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
           OPERATOR_USER|TAILSCALE_AUTH_KEY|ENABLE_VNC|VNC_PASSWORD|\
           STARLINK_ADDRESS|STARLINK_SNOW_MELT|EMERGENCY_SECONDS|DISABLE_SLEEP|\
+          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|\
           EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|NETWORK_WAIT_SECONDS|\
           UPLOAD_TEST|EMAIL_TEST) ;;
           *) fail "Unknown setup key: $key" ;;
@@ -149,7 +151,8 @@ validate_setup() {
     node_key DROPBOX_ROOT "$(get DROPBOX_ROOT)" || fail 'Invalid Dropbox root'
     node_key STARLINK_ADDRESS "$(get STARLINK_ADDRESS 192.168.100.1:9200)" || fail 'Invalid Starlink address'
     local key
-    for key in ENABLE_VNC DISABLE_SLEEP UPLOAD_TEST EMAIL_TEST RETAIN_LAST_BATCH; do
+    for key in ENABLE_VNC DISABLE_SLEEP UPLOAD_TEST EMAIL_TEST RETAIN_LAST_BATCH \
+               SYSTEM_UPGRADE DISABLE_AUTO_UPDATES; do
         [[ $(get "$key" yes) =~ ^(yes|no)$ ]] || fail "$key must be yes/no"
     done
     [[ $(get STARLINK_SNOW_MELT read) =~ ^(read|off)$ ]] || fail 'STARLINK_SNOW_MELT must be read/off'
@@ -217,6 +220,43 @@ verified_deb() {
     [[ ${actual,,} == "${expected,,}" ]] || fail "Checksum failed: $package"
     chmod 644 "$WORK/$package"
     apt_install "$WORK/$package"
+}
+system_updates() {
+    # Field boots are short and battery-powered: background apt/snap updates
+    # waste Starlink data and can delay poweroff by up to 30 minutes. Update
+    # once here on the bench instead, then update deliberately at maintenance.
+    if [[ $(get SYSTEM_UPGRADE yes) == yes ]]; then
+        timeout -k 30 900 apt-get -o DPkg::Lock::Timeout=300 update
+        DEBIAN_FRONTEND=noninteractive timeout -k 60 3600 apt-get -o DPkg::Lock::Timeout=300 \
+            -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+            -y upgrade --with-new-pkgs
+        if command -v snap >/dev/null; then
+            timeout -k 30 1800 snap refresh ||
+                say 'WARNING: snap refresh incomplete (close running apps such as Firefox and rerun later)'
+        fi
+        if [[ -e /var/run/reboot-required ]]; then
+            say 'NOTE: Ubuntu requests a reboot. Finish installation, then reboot on the bench before field activation.'
+        fi
+    fi
+    if [[ $(get DISABLE_AUTO_UPDATES yes) == yes ]]; then
+        printf '%s\n' \
+            '// TELE field station: no background package updates during short battery boots.' \
+            '// Update on the bench: sudo apt update && sudo apt upgrade && sudo snap refresh' \
+            'APT::Periodic::Update-Package-Lists "0";' \
+            'APT::Periodic::Download-Upgradeable-Packages "0";' \
+            'APT::Periodic::AutocleanInterval "0";' \
+            'APT::Periodic::Unattended-Upgrade "0";' >"$WORK/apt-no-auto.conf"
+        install -m 644 "$WORK/apt-no-auto.conf" "$APT_NO_AUTO_CONF"
+        local timer
+        for timer in apt-daily.timer apt-daily-upgrade.timer fwupd-refresh.timer motd-news.timer; do
+            if systemctl cat "$timer" >/dev/null 2>&1; then systemctl disable --now "$timer"; fi
+        done
+        if command -v snap >/dev/null; then
+            timeout -k 10 120 snap refresh --hold ||
+                say 'WARNING: snap refresh --hold failed; snaps may still update during field boots'
+        fi
+        say 'Automatic apt/snap updates are off. Update deliberately on the bench (see INSTALLATION.md).'
+    fi
 }
 install_packages() {
     apt_install bash coreutils util-linux findutils grep sed gawk openssh-server \
@@ -464,7 +504,8 @@ main() {
         say 'PLAN ONLY: no downloads, configuration reads, root changes or network calls.'
         say '1. Check Ubuntu, locks and inactive field mode.'
         say '2. Install bootstrap tools, fetch one Git revision, validate private setup.'
-        say '3. Install dependencies, pinned rclone/grpcurl and approved Harvester.'
+        say '3. Update Ubuntu/snaps once; turn off automatic apt/snap updates for field boots.'
+        say '3b. Install dependencies, pinned rclone/grpcurl and approved Harvester.'
         say '4. Configure operator account, UTC/NTP, optional sleep masks and SSH.'
         say '5. Install/enroll Tailscale with SSH enabled.'
         say '6. Back up private settings, deploy release, write configuration/profiles.'
@@ -479,6 +520,7 @@ main() {
     parse_setup
     step 'Check station and acquire locks' preflight
     step 'Fetch and pin TELE; validate setup' fetch_release
+    step 'Update Ubuntu once and turn off automatic updates' system_updates
     step 'Install application dependencies and native Harvester' install_packages
     step 'Configure Linux account, clock, sleep and SSH' linux_settings
     step 'Install and authorize Tailscale SSH' install_tailscale

@@ -816,17 +816,48 @@ computer's local screen; Ubuntu 26.04's default GNOME session is Wayland-only
 
 ### Updates and installation timing
 
-Perform normal package maintenance on the bench with sufficient power. Do not run
-a full unattended OS upgrade inside the weekly data-collection script.
+Field boots are short and run on battery. Ubuntu's background updates would use
+Starlink data and can delay poweroff: the unattended-upgrades shutdown service is
+allowed up to 30 minutes to finish
+([unattended-upgrades service file](https://github.com/mvo5/unattended-upgrades/blob/master/debian/unattended-upgrades.service)).
+An update interrupted by poweroff can also leave packages half-installed.
+
+The installer therefore has a stage that, by default:
+
+- **Updates once on the bench:** `apt-get update`, `apt-get upgrade --with-new-pkgs`
+  and `snap refresh` (`SYSTEM_UPGRADE=yes`).
+- **Turns off background updates** (`DISABLE_AUTO_UPDATES=yes`): disables
+  `apt-daily.timer`, `apt-daily-upgrade.timer`, `fwupd-refresh.timer` and
+  `motd-news.timer`, writes `/etc/apt/apt.conf.d/99tele-no-automatic-updates`
+  and holds snap refreshes with `snap refresh --hold`.
+
+If Ubuntu reports that a reboot is required, finish the installation and reboot
+on the bench before enabling field operation. If `snap refresh` warns about a
+running application such as Firefox, close it and run `sudo snap refresh` later.
+
+Security updates are then your responsibility. Update deliberately during bench
+or controlled maintenance visits, with sufficient power and before field mode is
+active:
 
 ```bash
-# Run on: Ubuntu station.
+# Run on: Ubuntu station, on the bench.
 sudo apt update
 sudo apt upgrade
+sudo snap refresh
 ```
 
 Review prompts and reboot requirements before proceeding. Record the tested
 package versions so a later dependency update can be evaluated deliberately.
+
+To restore Ubuntu's automatic updates (for example on a computer leaving field
+service):
+
+```bash
+# Run on: Ubuntu station.
+sudo rm /etc/apt/apt.conf.d/99tele-no-automatic-updates
+sudo systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
+sudo snap refresh --unhold
+```
 
 ## Configure BIOS wake-up and shutdown behaviour
 

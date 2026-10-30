@@ -8,6 +8,8 @@ export LC_ALL=C
 usage() {
     printf '%s\n' \
       'Usage: sudo bash INSTALL.sh --config /root/tele-setup.conf [options]' \
+      '   or, inside an unzipped TELE bundle:   sudo bash INSTALL.sh' \
+      '       (uses setup.conf, the code and the Harvester .deb in the same folder)' \
       '  --mode confirm|auto|plan   Confirm each stage (default), no prompts, or no changes' \
       '  --ref REF                  Git revision/tag/branch; default main, resolved once' \
       '  --source-dir PATH          Use a clean, committed local Git checkout instead' \
@@ -19,11 +21,14 @@ say() { printf '%s\n' "$*"; }
 declare -gA SETUP=()
 APT_NO_AUTO_CONF=/etc/apt/apt.conf.d/99tele-no-automatic-updates
 GDM_DIR=/etc/gdm3 LIGHTDM_DIR=/etc/lightdm DCONF_DIR=/etc/dconf HOSTS_FILE=/etc/hosts HOME_BASE=/home
-MODE=confirm CONFIG='' REF=main SOURCE_DIR='' ENABLE_FIELD=no WORK='' CURRENT_STAGE=arguments
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MODE=confirm MODE_SET=no CONFIG='' CONFIG_DIR='' PRIVATE_CONF='' BUNDLE=no
+REF=main SOURCE_DIR='' ENABLE_FIELD=no WORK='' CURRENT_STAGE=arguments
 cleanup() {
     local rc=$?
     trap - EXIT
     [[ -z $WORK ]] || rm -rf -- "$WORK"
+    [[ -z $PRIVATE_CONF ]] || rm -f -- "$PRIVATE_CONF"
     if ((rc)); then
         say "Installation stopped at '$CURRENT_STAGE' (status $rc). No automatic rollback of packages/settings."
         say 'Nothing has been rebooted or powered off. Fix the failed stage and rerun.'
@@ -121,8 +126,19 @@ preflight() {
 }
 fetch_release() {
     timeout -k 30 900 apt-get -o DPkg::Lock::Timeout=120 update
-    apt_install ca-certificates curl git jq
-    if [[ -n $SOURCE_DIR ]]; then
+    apt_install ca-certificates curl jq
+    if [[ $BUNDLE == yes ]]; then
+        verify_bundle
+        SHA=$(<"$SCRIPT_DIR/REVISION")
+        mkdir "$WORK/source"
+        # Code only: the setup file (passwords) and the .deb never enter the release.
+        (cd "$SCRIPT_DIR" && tar --exclude=./setup.conf --exclude='./*.deb' --exclude=./.git \
+            --exclude=./MANIFEST.sha256 -cf - .) | tar -x -C "$WORK/source"
+    else
+        apt_install git
+    fi
+    if [[ $BUNDLE == yes ]]; then :
+    elif [[ -n $SOURCE_DIR ]]; then
         [[ -z $(git -C "$SOURCE_DIR" status --porcelain) ]] || fail 'Local source checkout must be clean and committed'
         SHA=$(git -C "$SOURCE_DIR" rev-parse HEAD)
         git clone --no-hardlinks -- "$SOURCE_DIR" "$WORK/source"
@@ -195,7 +211,7 @@ validate_setup() {
         private_file /etc/tele/rclone.conf
     fi
     local config_dir deb found
-    config_dir=$(dirname -- "$(readlink -f -- "$CONFIG")")
+    config_dir=${CONFIG_DIR:-$(dirname -- "$(readlink -f -- "$CONFIG")")}
     if [[ -n $(get HARVESTER_DEB) && $(get HARVESTER_DEB) != /* ]]; then
         # A bare file name means "next to the credentials file".
         SETUP[HARVESTER_DEB]="$config_dir/$(get HARVESTER_DEB)"
@@ -241,6 +257,15 @@ validate_setup() {
            $(get RECORDER_SERIAL) =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] ||
             fail 'RECORDER_DEVICE and RECORDER_SERIAL must be given together (whole-disk by-id path), or leave both empty for automatic detection'
     fi
+}
+verify_bundle() {
+    # Detect a damaged or partly copied bundle before anything is installed.
+    [[ -f $SCRIPT_DIR/MANIFEST.sha256 && -f $SCRIPT_DIR/REVISION ]] ||
+        fail 'This folder is not a complete TELE bundle (MANIFEST.sha256 or REVISION missing)'
+    (cd "$SCRIPT_DIR" && sha256sum --check --quiet MANIFEST.sha256) ||
+        fail 'The bundle is damaged or was modified: copy/unzip it again'
+    [[ $(<"$SCRIPT_DIR/REVISION") =~ ^[0-9a-f]{40}$ ]] || fail 'Invalid REVISION in bundle'
+    say "Bundle verified. TELE revision $(<"$SCRIPT_DIR/REVISION")"
 }
 verified_deb() {
     local base=$1 package=$2 manifest=$3 expected actual
@@ -426,7 +451,11 @@ install_release_and_config() {
     install -d -m 755 /opt/tele/releases /etc/tele
     if [[ ! -d $release ]]; then
         mkdir "$WORK/release"
-        git -C "$SOURCE" archive HEAD | tar -x -C "$WORK/release"
+        if [[ $BUNDLE == yes ]]; then
+            cp -a "$SOURCE/." "$WORK/release/"
+        else
+            git -C "$SOURCE" archive HEAD | tar -x -C "$WORK/release"
+        fi
         chmod 755 "$WORK/release/tele.sh" "$WORK/release/scripts/"*.sh
         chown -R root:root "$WORK/release"
         cp -a "$WORK/release" "$release.install-$$"
@@ -587,7 +616,7 @@ main() {
             --config|--mode|--ref|--source-dir)
                 [[ $# -ge 2 ]] || fail "Missing value for $1"
                 case "$1" in
-                    --config) CONFIG=$2 ;; --mode) MODE=$2 ;;
+                    --config) CONFIG=$2 ;; --mode) MODE=$2 MODE_SET=yes ;;
                     --ref) REF=$2 ;; --source-dir) SOURCE_DIR=$2 ;;
                 esac
                 shift 2 ;;
@@ -601,7 +630,7 @@ main() {
     if [[ $MODE == plan ]]; then
         say 'PLAN ONLY: no downloads, configuration reads, root changes or network calls.'
         say '1. Check Ubuntu, locks and inactive field mode.'
-        say '2. Install bootstrap tools, fetch one Git revision, validate private setup.'
+        say '2. Install bootstrap tools, fetch one Git revision (or verify the bundle), validate private setup.'
         say '3. Update Ubuntu/snaps once; turn off automatic apt/snap updates for field boots.'
         say '3b. Install dependencies, pinned rclone/grpcurl and approved Harvester.'
         say '4. Set computer name, operator account and password, automatic login, no lock screen, UTC/NTP, optional sleep masks and SSH.'
@@ -613,8 +642,21 @@ main() {
         say "10. Field activation for next boot: $ENABLE_FIELD. No reboot/poweroff."
         return
     fi
-    [[ -n $CONFIG ]] || fail '--config is required'
+    if [[ -z $CONFIG && -z $SOURCE_DIR && -f $SCRIPT_DIR/setup.conf && -f $SCRIPT_DIR/REVISION &&
+          -f $SCRIPT_DIR/lib/workflow.sh ]]; then
+        BUNDLE=yes
+        # A technician run: no questions between stages unless asked for.
+        [[ $MODE_SET == yes ]] || MODE=auto
+    fi
+    [[ -n $CONFIG || $BUNDLE == yes ]] || fail '--config is required (or run inside an unzipped TELE bundle)'
     trap cleanup EXIT
+    if [[ $BUNDLE == yes ]]; then
+        [[ $EUID == 0 ]] || fail 'Run with sudo:  sudo bash INSTALL.sh'
+        # Files from a zip belong to the desktop user; work from a private root-owned copy.
+        PRIVATE_CONF=$(mktemp /var/tmp/tele-setup.XXXXXX)
+        install -m 600 -o root -g root "$SCRIPT_DIR/setup.conf" "$PRIVATE_CONF"
+        CONFIG=$PRIVATE_CONF CONFIG_DIR=$SCRIPT_DIR
+    fi
     parse_setup
     step 'Check station and acquire locks' preflight
     step 'Fetch and pin TELE; validate setup' fetch_release
@@ -628,6 +670,10 @@ main() {
     step 'Check Starlink snow-melt configuration' check_starlink
     if [[ $ENABLE_FIELD == yes ]]; then step 'Enable field operation for next boot' enable_field; fi
     say "Installed TELE revision $SHA. No reboot or poweroff was requested."
+    if [[ $BUNDLE == yes ]]; then
+        say "This folder holds passwords (setup.conf). Delete it when the installation is accepted:"
+        say "  sudo rm -rf '$SCRIPT_DIR'"
+    fi
     say 'Verify BIOS wake, USB relay cutoff, native exports and remote access physically.'
     say 'Bench collection: sudo /opt/tele/current/tele.sh --once'
 }

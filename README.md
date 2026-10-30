@@ -114,6 +114,11 @@ Use [INSTALL.sh](INSTALL.sh) on the Ubuntu station. Start with the
 [master installer instructions](INSTALLATION.md#master-installer); do not put
 real credentials in the repository.
 
+To deploy several units, `scripts/make-bundle.sh` packs the tested code, one unit's
+filled setup file and the Nanometrics package into a single zip; the technician
+unzips it and runs `sudo bash INSTALL.sh`
+(see [the bundle instructions](INSTALLATION.md#ship-a-ready-to-run-bundle-recommended)).
+
 `credentials.example.txt` is tracked deliberately; it contains only placeholders
 and explanations of the Gmail app password, Dropbox OAuth, Tailscale auth key and
 VNC password. Copy it to a protected private file before editing, never replace

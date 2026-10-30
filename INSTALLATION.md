@@ -584,6 +584,9 @@ be done by hand:
 
 What cannot be automated, and is therefore the technician's short list:
 
+With a [bundle](#ship-a-ready-to-run-bundle-recommended) the technician only copies
+one folder and runs `sudo bash INSTALL.sh`. Without one, the manual steps are:
+
 1. **Copy two things to the computer:** the setup file and the Nanometrics `.deb`,
    into one folder, for example `/root/tele/`.
 2. **Protect and run:**
@@ -600,6 +603,51 @@ What cannot be automated, and is therefore the technician's short list:
 5. **USB relay port:** test that the chosen port releases the relay after shutdown
    ([port test](#choose-and-test-the-usb-relay-control-port)).
 6. **Delete the setup file** from the computer when installation is accepted.
+
+### Ship a ready-to-run bundle (recommended)
+
+Instead of downloading the code on each station, build ONE folder per unit on your
+own computer and send it to the technician. It holds the exact tested code, the
+filled setup file and the Nanometrics package, so the technician needs no GitHub
+access, no editing and no checksums.
+
+Build it on your Mac or Linux computer, inside a checkout of this repository:
+
+```bash
+# Run on: YOUR computer (not the station), inside the repository checkout.
+# Needs git and zip (macOS has both). For --encrypt on a Mac: brew install gnupg
+cp credentials.example.txt ~/tele9.conf        # then fill in ~/tele9.conf for this unit
+scripts/make-bundle.sh --setup ~/tele9.conf --deb ~/Downloads/PegasusHarvester.deb --encrypt
+```
+
+It writes `tele9.zip.gpg` (or `tele9.zip` without `--encrypt`) in the current folder.
+The script:
+
+- ships only **committed** code (`--ref` chooses the revision; the old field logs in
+  `log/` and `state/` are left out);
+- writes the package name and its SHA256 into the setup file itself;
+- refuses to build while any `REPLACE_WITH...` value is left in the setup file;
+- adds `MANIFEST.sha256` so a damaged or edited bundle is refused at install time,
+  `REVISION` (the exact Git commit) and a one-page `README-TECHNICIAN.txt`.
+
+Send the file over a private channel and the passphrase over a different one.
+
+**The technician** puts the folder on the Desktop (decrypting with
+`gpg --decrypt tele9.zip.gpg > tele9.zip` and unzipping if needed), opens a terminal
+in it and runs:
+
+```bash
+# Run on: the Ubuntu station, inside the unzipped bundle folder.
+sudo bash INSTALL.sh
+```
+
+Inside a bundle `INSTALL.sh` needs no options: it uses the `setup.conf` next to it,
+makes a private root-owned copy of that file (a zip leaves it owned by the desktop
+user), verifies the checksums, installs from the bundled code (no Git needed), asks
+no questions between stages, and finds the `.deb` in the same folder. It still does
+**not** enable field operation: that is `sudo bash INSTALL.sh --enable-field` after
+testing. It ends by reminding the technician to delete the folder, because it
+contains passwords.
 
 ### Recorder detection and replacement
 

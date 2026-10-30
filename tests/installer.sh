@@ -195,6 +195,51 @@ test_autologin_can_be_switched_off() {
     set_autologin
     [[ ! -s $GDM_DIR/custom.conf ]]
 }
+make_test_bundle() {
+    local name=$1 out="$BASE/bundle-$1"
+    mkdir -p "$out"
+    printf 'station=%s\nCOMPUTER_NAME=%s\n# HARVESTER_URL=https://example.invalid/x.deb\nHARVESTER_SHA256=old\n' "$name" "$name" >"$out/in.conf"
+    printf 'fake deb' >"$out/PegasusHarvester-test.deb"
+    "$ROOT/scripts/make-bundle.sh" --setup "$out/in.conf" --deb "$out/PegasusHarvester-test.deb" \
+        --out "$out" >"$out/log" 2>&1
+    (cd "$out" && unzip -q "$name.zip")
+}
+test_bundle_contents_and_integrity_check() {
+    make_test_bundle bt1
+    local dir="$BASE/bundle-bt1/bt1"
+    [[ -f $dir/INSTALL.sh && -f $dir/lib/workflow.sh && -f $dir/REVISION &&
+       -f $dir/MANIFEST.sha256 && -f $dir/README-TECHNICIAN.txt && -f $dir/PegasusHarvester-test.deb ]]
+    [[ ! -d $dir/log && ! -d $dir/state ]]
+    [[ $(stat -c %a "$dir/setup.conf") == 600 ]]
+    grep -qx 'HARVESTER_DEB=PegasusHarvester-test.deb' "$dir/setup.conf"
+    grep -qx "HARVESTER_SHA256=$(sha256sum "$dir/PegasusHarvester-test.deb" | cut -d' ' -f1)" "$dir/setup.conf"
+    [[ $(grep -c '^HARVESTER_SHA256=' "$dir/setup.conf") == 1 ]]
+    ! grep -q 'sha256 old' "$dir/setup.conf"
+    # The bundle must not carry the secrets into the manifest or the code tree.
+    ! grep -q 'setup.conf' "$dir/MANIFEST.sha256"
+    source "$ROOT/INSTALL.sh"
+    SCRIPT_DIR=$dir
+    (verify_bundle) >/dev/null
+}
+test_damaged_bundle_is_refused() {
+    make_test_bundle bt2
+    local dir="$BASE/bundle-bt2/bt2"
+    printf '\n# tampered\n' >>"$dir/lib/common.sh"
+    source "$ROOT/INSTALL.sh"
+    SCRIPT_DIR=$dir
+    set +e; (set -e; verify_bundle) >/dev/null 2>&1; local rc=$?; set -e
+    [[ $rc != 0 ]]
+}
+test_bundle_with_placeholders_is_refused() {
+    local out="$BASE/bundle-ph"; mkdir -p "$out"
+    printf 'station=ph\nEMAIL_PASSWORD=REPLACE_WITH_SECRET\n' >"$out/in.conf"
+    printf deb >"$out/a.deb"
+    set +e
+    "$ROOT/scripts/make-bundle.sh" --setup "$out/in.conf" --deb "$out/a.deb" --out "$out" >"$out/log" 2>&1
+    local rc=$?; set -e
+    [[ $rc != 0 && ! -e $out/ph.zip ]]
+    ! grep -q 'SECRET' "$out/log"
+}
 test_stage_failure_stops_before_activation() {
     # A fresh strict shell is essential: an if-function context masks errexit.
     set +e

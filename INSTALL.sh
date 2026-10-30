@@ -28,6 +28,7 @@ export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1
 export UCF_FORCE_CONFFOLD=1 APT_LISTCHANGES_FRONTEND=none PAGER=cat SYSTEMD_PAGER=
 declare -gA SETUP=()
 APT_NO_AUTO_CONF=/etc/apt/apt.conf.d/99tele-no-automatic-updates
+UNIT_DIR=/etc/systemd/system
 GDM_DIR=/etc/gdm3 LIGHTDM_DIR=/etc/lightdm DCONF_DIR=/etc/dconf HOSTS_FILE=/etc/hosts HOME_BASE=/home
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MODE=confirm MODE_SET=no CONFIG='' CONFIG_DIR='' PRIVATE_CONF='' BUNDLE=no
@@ -637,24 +638,32 @@ install_release_and_config() {
     printf '%s\n' "$SHA" >/etc/tele/installed-revision
 }
 install_services() {
-    local unit
-    for unit in tele.service tele-power-guard.timer tele-poweroff.service tele-vnc@.service; do
-        install -m 644 "$SOURCE/systemd/$unit" "/etc/systemd/system/$unit"
+    # VNC is optional: its unit is only installed (and checked) when VNC is enabled,
+    # because it needs tigervnc, which is not installed otherwise.
+    local unit units=(tele.service tele-power-guard.timer tele-poweroff.service)
+    [[ $(get ENABLE_VNC yes) != yes ]] || units+=(tele-vnc@.service)
+    install -d -m 755 "$UNIT_DIR"
+    for unit in "${units[@]}"; do
+        install -m 644 "$SOURCE/systemd/$unit" "$UNIT_DIR/$unit"
     done
-    install -d -m 755 /etc/systemd/system/tele.service.d /etc/systemd/system/tele-power-guard.timer.d
+    install -d -m 755 "$UNIT_DIR/tele.service.d" "$UNIT_DIR/tele-power-guard.timer.d"
     printf '[Service]\nRuntimeMaxSec=%ss\n' "$(get EMERGENCY_SECONDS 14400)" \
-        >/etc/systemd/system/tele.service.d/limit.conf
+        >"$UNIT_DIR/tele.service.d/limit.conf"
     printf '[Timer]\nOnBootSec=\nOnBootSec=%ss\n' "$(get EMERGENCY_SECONDS 14400)" \
-        >/etc/systemd/system/tele-power-guard.timer.d/limit.conf
+        >"$UNIT_DIR/tele-power-guard.timer.d/limit.conf"
     if [[ $(get ENABLE_VNC yes) == yes ]]; then
         install -d -m 755 /etc/tele/vnc
         printf '%s\n' "$(get VNC_PASSWORD)" | tigervncpasswd -f >"$WORK/vnc.passwd"
         install -o "$USER_NAME" -g "$(id -gn "$USER_NAME")" -m 600 \
             "$WORK/vnc.passwd" "/etc/tele/vnc/$USER_NAME.passwd"
+    elif [[ -e $UNIT_DIR/tele-vnc@.service ]]; then
+        # A unit left from an earlier VNC installation would fail verification.
+        rm -f -- "$UNIT_DIR/tele-vnc@.service"
     fi
     systemctl daemon-reload
-    systemd-analyze verify /etc/systemd/system/tele.service /etc/systemd/system/tele-power-guard.timer \
-        /etc/systemd/system/tele-poweroff.service /etc/systemd/system/tele-vnc@.service
+    local files=()
+    for unit in "${units[@]}"; do files+=("$UNIT_DIR/$unit"); done
+    systemd-analyze verify "${files[@]}"
     # No --now: boot activation is a separate, last stage.
 }
 check_connections() {

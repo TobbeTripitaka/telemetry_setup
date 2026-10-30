@@ -319,6 +319,45 @@ test_harvester_version_check_ignores_exit_status() {
     set +e; (set -e; check_harvester_version) >/dev/null 2>&1; local rc=$?; set -e
     [[ $rc != 0 ]]
 }
+test_services_without_vnc_do_not_install_or_check_the_vnc_unit() {
+    source "$ROOT/INSTALL.sh"
+    SOURCE=$ROOT WORK="$BASE/svc-work"; mkdir -p "$WORK"
+    UNIT_DIR="$BASE/units-novnc"
+    declare -gA SETUP=([ENABLE_VNC]=no)
+    local calls="$BASE/svc-calls"
+    systemctl() { echo "systemctl $*" >>"$calls"; }
+    systemd-analyze() { echo "analyze $*" >>"$calls"; }
+    install_services
+    [[ -f $UNIT_DIR/tele.service && -f $UNIT_DIR/tele-poweroff.service && -f $UNIT_DIR/tele-power-guard.timer ]]
+    [[ ! -e $UNIT_DIR/tele-vnc@.service ]]
+    ! grep -q 'vnc' "$calls"
+    grep -q 'analyze verify .*tele.service' "$calls"
+}
+test_services_remove_a_stale_vnc_unit_when_vnc_is_off() {
+    source "$ROOT/INSTALL.sh"
+    SOURCE=$ROOT WORK="$BASE/svc-work2"; mkdir -p "$WORK"
+    UNIT_DIR="$BASE/units-stale"; mkdir -p "$UNIT_DIR"
+    : >"$UNIT_DIR/tele-vnc@.service"
+    declare -gA SETUP=([ENABLE_VNC]=no)
+    systemctl() { :; }; systemd-analyze() { :; }
+    install_services
+    [[ ! -e $UNIT_DIR/tele-vnc@.service ]]
+}
+test_services_with_vnc_install_and_check_the_vnc_unit() {
+    source "$ROOT/INSTALL.sh"
+    SOURCE=$ROOT WORK="$BASE/svc-work3"; mkdir -p "$WORK"
+    UNIT_DIR="$BASE/units-vnc"
+    declare -gA SETUP=([ENABLE_VNC]=yes [VNC_PASSWORD]=abcd1234)
+    USER_NAME=$(id -un)
+    local calls="$BASE/svc-calls3"
+    systemctl() { :; }
+    systemd-analyze() { echo "analyze $*" >>"$calls"; }
+    tigervncpasswd() { cat >/dev/null; printf pw; }
+    install() { if [[ $1 == -o ]]; then shift 2; shift 2; command install "$@" 2>/dev/null || true; else command install "$@"; fi; }
+    install_services 2>/dev/null || true
+    [[ -f $UNIT_DIR/tele-vnc@.service ]]
+    grep -q 'tele-vnc@.service' "$calls"
+}
 test_stage_failure_stops_before_activation() {
     # A fresh strict shell is essential: an if-function context masks errexit.
     set +e

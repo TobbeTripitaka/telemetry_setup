@@ -326,3 +326,4 @@ touch or open an issue in this repository. I would like to keep the setup
 practical, easy to understand and reliable enough to leave in the field.
 
 Software: `4.0.1`. Documentation updated: 13 October 2026. Record the Git revision as well.
+

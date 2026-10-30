@@ -240,6 +240,22 @@ test_bundle_with_placeholders_is_refused() {
     [[ $rc != 0 && ! -e $out/ph.zip ]]
     ! grep -q 'SECRET' "$out/log"
 }
+test_apt_never_waits_on_the_terminal() {
+    source "$ROOT/INSTALL.sh"
+    local out="$BASE/apt-run"
+    timeout() {
+        { printf 'args:%s\n' "$*"; printf 'needrestart:%s/%s\n' "$NEEDRESTART_MODE" "$NEEDRESTART_SUSPEND"
+          printf 'frontend:%s\n' "$DEBIAN_FRONTEND"; printf 'stdin:'; cat; printf '\n'; } >"$out"
+    }
+    echo "would-be-keyboard-input" | apt_install curl
+    # A bare `timeout` would leave apt in a background process group (silently
+    # stopped when anything reads the terminal); stdin must also be closed.
+    grep -q '^args:--foreground -k 30 1800 apt-get' "$out"
+    grep -q 'install -y curl' "$out"
+    grep -qx 'needrestart:a/1' "$out"
+    grep -qx 'frontend:noninteractive' "$out"
+    grep -qx 'stdin:' "$out"
+}
 test_stage_failure_stops_before_activation() {
     # A fresh strict shell is essential: an if-function context masks errexit.
     set +e

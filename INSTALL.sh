@@ -87,10 +87,20 @@ download() {
         --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 280 \
         "$1" --output "$2"
 }
-apt_install() {
-    DEBIAN_FRONTEND=noninteractive timeout -k 30 1800 apt-get \
-        -o DPkg::Lock::Timeout=120 install -y "$@"
+apt_run() {
+    # usage: apt_run SECONDS apt-get-arguments...
+    # Plain `timeout` runs apt in its OWN process group. If anything then reads the
+    # terminal (needrestart, a dpkg question), the kernel silently stops apt and
+    # the installer hangs with no message. So: --foreground keeps apt in the
+    # terminal's process group, stdin is closed so a question gets the default,
+    # and needrestart is told never to ask.
+    local limit=$1; shift
+    DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
+        timeout --foreground -k 30 "$limit" apt-get -o DPkg::Lock::Timeout=300 \
+        -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
+        "$@" </dev/null
 }
+apt_install() { apt_run 1800 install -y "$@"; }
 preflight() {
     [[ $EUID == 0 ]] || fail 'Run with sudo on Ubuntu'
     [[ -f /etc/os-release && -d /run/systemd/system ]] || fail 'Ubuntu with systemd is required'
@@ -125,7 +135,7 @@ preflight() {
     WORK=$(mktemp -d /var/tmp/tele-install.XXXXXX)
 }
 fetch_release() {
-    timeout -k 30 900 apt-get -o DPkg::Lock::Timeout=120 update
+    apt_run 900 update
     apt_install ca-certificates curl jq
     if [[ $BUNDLE == yes ]]; then
         verify_bundle
@@ -283,10 +293,8 @@ system_updates() {
     # waste Starlink data and can delay poweroff by up to 30 minutes. Update
     # once here on the bench instead, then update deliberately at maintenance.
     if [[ $(get SYSTEM_UPGRADE yes) == yes ]]; then
-        timeout -k 30 900 apt-get -o DPkg::Lock::Timeout=300 update
-        DEBIAN_FRONTEND=noninteractive timeout -k 60 3600 apt-get -o DPkg::Lock::Timeout=300 \
-            -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
-            -y upgrade --with-new-pkgs
+        apt_run 900 update
+        apt_run 3600 -y upgrade --with-new-pkgs
         if command -v snap >/dev/null; then
             timeout -k 30 1800 snap refresh ||
                 say 'WARNING: snap refresh incomplete (close running apps such as Firefox and rerun later)'
@@ -430,7 +438,7 @@ install_tailscale() {
     download "https://pkgs.tailscale.com/stable/ubuntu/$CODENAME.tailscale-keyring.list" "$WORK/tailscale.list"
     install -m 644 "$WORK/tailscale.gpg" /usr/share/keyrings/tailscale-archive-keyring.gpg
     install -m 644 "$WORK/tailscale.list" /etc/apt/sources.list.d/tailscale.list
-    timeout -k 30 900 apt-get -o DPkg::Lock::Timeout=120 update
+    apt_run 900 update
     apt_install tailscale
     systemctl enable --now tailscaled
     if tailscale status --json >"$WORK/tailscale-status.json" &&

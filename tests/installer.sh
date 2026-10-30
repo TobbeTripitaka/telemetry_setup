@@ -84,6 +84,117 @@ test_updates_can_be_left_alone() {
     system_updates
     [[ ! -e $calls && ! -e $APT_NO_AUTO_CONF ]]
 }
+test_recorder_may_be_left_to_automatic_detection() {
+    setup_validation
+    unset 'SETUP[RECORDER_DEVICE]' 'SETUP[RECORDER_SERIAL]'
+    validate_setup
+}
+test_half_a_recorder_pin_is_rejected() {
+    setup_validation
+    unset 'SETUP[RECORDER_SERIAL]'
+    set +e; (set -e; validate_setup) >/dev/null 2>&1; local rc=$?; set -e
+    [[ $rc != 0 ]]
+}
+test_operator_password_rules() {
+    local pw
+    for pw in 'short' 'has space1' 'has:colon1'; do
+        setup_validation
+        SETUP[OPERATOR_PASSWORD]=$pw
+        set +e; (set -e; validate_setup) >/dev/null 2>&1; local rc=$?; set -e
+        [[ $rc != 0 ]] || return 1
+    done
+    setup_validation
+    SETUP[OPERATOR_PASSWORD]=tele99
+    validate_setup
+}
+test_computer_name_rules() {
+    local name
+    for name in 'Tele9' 'tele_9' '-tele' 'tele-'; do
+        setup_validation
+        SETUP[COMPUTER_NAME]=$name
+        set +e; (set -e; validate_setup) >/dev/null 2>&1; local rc=$?; set -e
+        [[ $rc != 0 ]] || return 1
+    done
+    setup_validation
+    SETUP[COMPUTER_NAME]=tele9
+    validate_setup
+}
+test_local_data_and_legacy_retain_key() {
+    setup_validation
+    validate_setup
+    [[ $LOCAL_DATA_VALUE == keep ]]
+    SETUP[RETAIN_LAST_BATCH]=no
+    validate_setup
+    [[ $LOCAL_DATA_VALUE == clean ]]
+    SETUP[LOCAL_DATA]=keep
+    validate_setup
+    [[ $LOCAL_DATA_VALUE == keep ]]
+    SETUP[LOCAL_DATA]=maybe
+    set +e; (set -e; validate_setup) >/dev/null 2>&1; local rc=$?; set -e
+    [[ $rc != 0 ]]
+}
+test_harvester_package_found_next_to_credentials() {
+    setup_validation
+    unset 'SETUP[PEGASUS_BIN]'
+    mkdir -p "$BASE/pkg"
+    CONFIG="$BASE/pkg/setup.conf"; touch "$CONFIG"
+    printf deb >"$BASE/pkg/PegasusHarvester-1.2.deb"
+    SETUP[HARVESTER_SHA256]=$(printf 'a%.0s' {1..64})
+    validate_setup
+    [[ $(get HARVESTER_DEB) == "$BASE/pkg/PegasusHarvester-1.2.deb" ]]
+}
+test_bare_harvester_filename_resolves_next_to_credentials() {
+    setup_validation
+    mkdir -p "$BASE/pkg2"
+    CONFIG="$BASE/pkg2/setup.conf"; touch "$CONFIG"
+    printf deb >"$BASE/pkg2/my.deb"
+    SETUP[HARVESTER_DEB]=my.deb
+    SETUP[HARVESTER_SHA256]=$(printf 'b%.0s' {1..64})
+    validate_setup
+    [[ $(get HARVESTER_DEB) == "$BASE/pkg2/my.deb" ]]
+}
+test_computer_account_and_autologin_configuration() {
+    source "$ROOT/INSTALL.sh"
+    WORK="$BASE/acct-work"; mkdir -p "$WORK"
+    GDM_DIR="$BASE/acct/gdm3" LIGHTDM_DIR="$BASE/acct/lightdm" DCONF_DIR="$BASE/acct/dconf"
+    HOSTS_FILE="$BASE/acct/hosts" HOME_BASE="$BASE/acct/home"
+    mkdir -p "$GDM_DIR" "$HOME_BASE/tele9"
+    printf '[daemon]\n#AutomaticLoginEnable = true\n#AutomaticLogin = old\nWaylandEnable=false\n' >"$GDM_DIR/custom.conf"
+    printf '127.0.0.1 localhost\n127.0.1.1 oldname\n' >"$HOSTS_FILE"
+    USER_NAME=tele9 COMPUTER_NAME=tele9 OPERATOR_PASSWORD=tele99
+    declare -gA SETUP=()
+    local calls="$BASE/acct-calls"
+    hostnamectl() { echo "hostnamectl $*" >>"$calls"; }
+    id() { if [[ $1 == -gn ]]; then echo tele9; else return 0; fi; }
+    getent() { echo "tele9:x:1000:1000::/home/tele9:/bin/bash"; }
+    useradd() { echo "useradd $*" >>"$calls"; }
+    usermod() { echo "usermod $*" >>"$calls"; }
+    chpasswd() { cat >>"$calls"; }
+    dconf() { echo "dconf $*" >>"$calls"; }
+    chown() { :; }
+    install() { if [[ $1 == -d && $2 == -o ]]; then command install -d -m 700 "${@:7}"; else command install "$@"; fi; }
+    set_computer_name
+    set_operator_account
+    set_autologin
+    grep -q 'hostnamectl set-hostname tele9' "$calls"
+    grep -qx 'tele9:tele99' "$calls"
+    grep -q 'usermod -aG sudo tele9' "$calls"
+    grep -qx '127.0.1.1 tele9' "$HOSTS_FILE"
+    grep -qx 'AutomaticLoginEnable=true' "$GDM_DIR/custom.conf"
+    grep -qx 'AutomaticLogin=tele9' "$GDM_DIR/custom.conf"
+    grep -qx 'WaylandEnable=false' "$GDM_DIR/custom.conf"
+    [[ $(grep -c AutomaticLogin "$GDM_DIR/custom.conf") == 2 ]]
+    grep -qx 'lock-enabled=false' "$DCONF_DIR/db/local.d/00-tele-field"
+    grep -q 'dconf update' "$calls"
+    [[ -f $HOME_BASE/tele9/.config/gnome-initial-setup-done ]]
+}
+test_autologin_can_be_switched_off() {
+    source "$ROOT/INSTALL.sh"
+    GDM_DIR="$BASE/off/gdm3"; mkdir -p "$GDM_DIR"
+    declare -gA SETUP=([AUTOLOGIN]=no)
+    set_autologin
+    [[ ! -s $GDM_DIR/custom.conf ]]
+}
 test_stage_failure_stops_before_activation() {
     # A fresh strict shell is essential: an if-function context masks errexit.
     set +e
@@ -106,6 +217,8 @@ setup_validation() {
     WORK="$BASE/validation-$BASHPID"
     mkdir -p "$WORK"
     SETUP[station]=bench01
+    SETUP[OPERATOR_PASSWORD]='test-only-pw'
+    CONFIG="$BASE/cfg/setup.conf"; mkdir -p "$BASE/cfg"; touch "$CONFIG"
     SETUP[DROPBOX_ROOT]='/Research Team/Project'
     SETUP[EMAIL_FROM]=station@example.com
     SETUP[EMAIL_TO]=operator@example.com

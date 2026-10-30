@@ -1,4 +1,36 @@
 #!/usr/bin/env bash
+disk_by_id_path() {
+    # Stable /dev/disk/by-id name for a whole disk such as /dev/sdb.
+    local dev=$1 link
+    for link in /dev/disk/by-id/usb-*; do
+        [[ -e $link && $link != *-part[0-9]* ]] || continue
+        if [[ $(readlink -f -- "$link") == "$dev" ]]; then printf '%s\n' "$link"; return 0; fi
+    done
+    return 1
+}
+
+detect_recorders() {
+    # Prints "serial<TAB>by-id path" for each attached USB disk that the
+    # Harvester itself identifies as a Pegasus. The OS disk is never probed;
+    # probing uses the read-only safe mode.
+    local roots name type tran dev serial link
+    [[ -x ${PEGASUS_BIN:-} ]] || return 0
+    roots=$(lsblk -snp -o NAME "$(findmnt -n -o SOURCE /)" 2>/dev/null || true)
+    while read -r name type tran; do
+        [[ $type == disk && $tran == usb ]] || continue
+        dev=$name
+        if printf '%s\n' "$roots" | grep -Fxq "$dev"; then continue; fi
+        serial=$(lsblk -dn -o SERIAL "$dev" 2>/dev/null) || continue
+        serial=$(trim "$serial")
+        valid_station "$serial" || { log "Skipping USB disk $dev: serial unusable as identity ('$serial')"; continue; }
+        link=$(disk_by_id_path "$dev") || continue
+        if timeout -k 5 40 "$PEGASUS_BIN" digitizer-info "-i=$dev" -safe >/dev/null 2>&1; then
+            log "Recorder detected: serial $serial at $dev"
+            printf '%s\t%s\n' "$serial" "$link"
+        fi
+    done < <(lsblk -dnpo NAME,TYPE,TRAN 2>/dev/null)
+}
+
 identify_recorder() {
     [[ -x $PEGASUS_BIN ]] || { die "Native Harvester executable missing"; return 1; }
     DEVICE=$(readlink -f -- "$RECORDER_DEVICE") || return 1

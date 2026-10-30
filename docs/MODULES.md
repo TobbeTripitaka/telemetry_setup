@@ -50,7 +50,7 @@ disabled template, which fails until real behaviour has been added and tested.
   parser. Validate every supported key, reject unknown keys and check identity
   before opening a device.
 - **State:** use the supplied `STATE_ROOT`, `SPOOL`, `VERIFIED`, `OWNERS`,
-  `LAST_BATCH`, `REMOTE_DATA`, `LOG_ROOT` and `RUN_ID`. Do not build another
+  `KEPT`, `REMOTE_DATA`, `LOG_ROOT` and `RUN_ID`. Do not build another
   station's paths or mutate global settings outside the source.
 - **Deadlines:** use `source_timeout` for external device commands and `cloud`
   for rclone. These respect the source deadline and add a bounded kill grace.

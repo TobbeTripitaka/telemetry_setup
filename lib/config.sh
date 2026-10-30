@@ -92,7 +92,7 @@ runtime_defaults() {
     HARVEST_BUDGET_SECONDS=3600
     NETWORK_TIMEOUT_SECONDS=300
     NETWORK_WAIT_SECONDS=1200
-    RETAIN_LAST_BATCH=yes
+    LOCAL_DATA=keep
     MIN_FREE_MIB=2048
     OVERLAP_DAYS=2
 }
@@ -111,7 +111,12 @@ runtime_key() {
         HARVEST_BUDGET_SECONDS) integer_between "$value" 1 3600 || return 1 ;;
         NETWORK_TIMEOUT_SECONDS) integer_between "$value" 10 600 || return 1 ;;
         NETWORK_WAIT_SECONDS) integer_between "$value" 0 3600 || return 1 ;;
-        RETAIN_LAST_BATCH) [[ $value =~ ^(yes|no)$ ]] || return 1 ;;
+        LOCAL_DATA) [[ $value =~ ^(keep|clean)$ ]] || return 1 ;;
+        # Legacy name, still accepted from older remote config files.
+        RETAIN_LAST_BATCH)
+            [[ $value =~ ^(yes|no)$ ]] || return 1
+            [[ $value == yes ]] && value=keep || value=clean
+            key=LOCAL_DATA ;;
         MIN_FREE_MIB) integer_between "$value" 256 1048576 || return 1 ;;
         OVERLAP_DAYS) integer_between "$value" 1 30 || return 1 ;;
         *) return 1 ;;

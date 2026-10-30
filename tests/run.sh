@@ -12,11 +12,11 @@ PASS=0 FAIL=0
 setup_test() {
     STATE_ROOT="$BASE/$TEST"
     SPOOL="$STATE_ROOT/pending" VERIFIED="$STATE_ROOT/verified" OWNERS="$STATE_ROOT/owners"
-    LAST_BATCH="$STATE_ROOT/last-verified" LOG_ROOT="$STATE_ROOT/logs"
+    KEPT="$STATE_ROOT/kept" LOG_ROOT="$STATE_ROOT/logs"
     LOG_FILE="$LOG_ROOT/run.log" RUN_ID=test-run RECORDER_SERIAL=test-recorder
     REMOTE_BASE="$STATE_ROOT/remote"
     REMOTE_DATA="$REMOTE_BASE/pegasus_harvester"
-    mkdir -p "$SPOOL" "$VERIFIED" "$OWNERS" "$LOG_ROOT" "$REMOTE_DATA"
+    mkdir -p "$SPOOL" "$VERIFIED" "$OWNERS" "$KEPT" "$LOG_ROOT" "$REMOTE_DATA"
     touch "$LOG_FILE"
     runtime_defaults
     station=test-station STATION_NAME=test-station
@@ -173,8 +173,8 @@ test_renamed_service_paths() {
 test_success_roundtrip() {
     batch
     upload_batch "$SPOOL/2025-01-01"
-    [[ -f $VERIFIED/2025-01-01.json && -d $LAST_BATCH && ! -d $SPOOL/2025-01-01 ]]
-    cloud check "$LAST_BATCH/dropbox.sum" "$REMOTE_DATA" --checkfile Dropbox --one-way
+    [[ -f $VERIFIED/2025-01-01.json && -d $KEPT/2025-01-01 && ! -d $SPOOL/2025-01-01 ]]
+    cloud check "$KEPT/2025-01-01/dropbox.sum" "$REMOTE_DATA" --checkfile Dropbox --one-way
 }
 test_failed_harvest_not_ready() {
     export MOCK_HARVEST_MODE=fail
@@ -248,7 +248,7 @@ test_wrong_remote_content_repaired() {
     cloud copy "$SPOOL/2025-01-01/files" "$REMOTE_DATA"
     printf wrong >"$REMOTE_DATA/2025/XX/TEST/BHZ.D/2025-01-01.mseed"
     upload_batch "$SPOOL/2025-01-01"
-    cloud check "$LAST_BATCH/dropbox.sum" "$REMOTE_DATA" --checkfile Dropbox --one-way
+    cloud check "$KEPT/2025-01-01/dropbox.sum" "$REMOTE_DATA" --checkfile Dropbox --one-way
 }
 test_native_name_collision_stops() {
     mkdir "$STATE_ROOT/a" "$STATE_ROOT/b"
@@ -310,20 +310,107 @@ test_symlink_stops() {
     ln -s /etc/passwd "$STATE_ROOT/links/file"
     expect_failure validate_paths "$STATE_ROOT/links"
 }
-test_no_retention() {
-    RETAIN_LAST_BATCH=no
+test_clean_removes_local_data() {
+    LOCAL_DATA=clean
     batch
     upload_batch "$SPOOL/2025-01-01"
-    [[ ! -d $LAST_BATCH && ! -d $SPOOL/2025-01-01 && -f $VERIFIED/2025-01-01.json ]]
+    [[ ! -d $KEPT/2025-01-01 && ! -d $SPOOL/2025-01-01 && -f $VERIFIED/2025-01-01.json ]]
 }
-test_keep_last_only() {
+test_keep_retains_every_verified_day() {
+    LOCAL_DATA=keep
     batch
     upload_batch "$SPOOL/2025-01-01"
     harvest_day 1735776000 1735862400 incremental none 5
     upload_batch "$SPOOL/2025-01-02"
-    [[ $(jq -r .day "$LAST_BATCH/meta.json") == 2025-01-02 ]]
-    [[ -f $VERIFIED/2025-01-01.json && -f $VERIFIED/2025-01-02.json &&
-       ! -d $LAST_BATCH.previous ]]
+    [[ -f $KEPT/2025-01-01/dropbox.sum && -f $KEPT/2025-01-02/dropbox.sum ]]
+}
+test_low_space_removes_oldest_verified_copy_first() {
+    LOCAL_DATA=keep
+    batch
+    upload_batch "$SPOOL/2025-01-01"
+    harvest_day 1735776000 1735862400 incremental none 5
+    upload_batch "$SPOOL/2025-01-02"
+    free_mib() { [[ -d $KEPT/2025-01-01 ]] && echo 10 || echo 99999; }
+    MIN_FREE_MIB=2048
+    check_local_storage
+    [[ ! -d $KEPT/2025-01-01 && -d $KEPT/2025-01-02 ]]
+    grep -q 'removing verified local copy of 2025-01-01' "$LOG_FILE"
+    grep -q 'WARNING: local storage is getting low' "$LOG_FILE" || true
+}
+test_low_space_warns_and_never_touches_pending() {
+    LOCAL_DATA=keep
+    batch
+    free_mib() { echo 100; }
+    MIN_FREE_MIB=2048
+    check_local_storage
+    grep -q 'WARNING: local storage is getting low' "$LOG_FILE"
+    [[ -d $SPOOL/2025-01-01 ]]
+}
+test_clean_mode_never_prunes_but_warns() {
+    LOCAL_DATA=clean
+    free_mib() { echo 100; }
+    MIN_FREE_MIB=2048
+    check_local_storage
+    grep -q 'WARNING: local storage is getting low' "$LOG_FILE"
+}
+test_legacy_retain_key_maps_to_local_data() {
+    runtime_defaults
+    runtime_key RETAIN_LAST_BATCH no
+    [[ $LOCAL_DATA == clean ]]
+    runtime_key RETAIN_LAST_BATCH yes
+    [[ $LOCAL_DATA == keep ]]
+    expect_failure runtime_key LOCAL_DATA maybe
+}
+test_ensure_dirs_recreates_missing_folders() {
+    rm -rf "$SPOOL" "$VERIFIED" "$OWNERS" "$KEPT" "$LOG_ROOT"
+    ensure_dirs
+    [[ -d $SPOOL && -d $VERIFIED && -d $OWNERS && -d $KEPT && -d $LOG_ROOT ]]
+}
+test_auto_recorders_get_serial_namespaces() {
+    source_test_setup
+    RECORDER_DEVICE=''
+    detect_recorders() { printf 'SN001\t/dev/disk/by-id/usb-A\nSN002\t/dev/disk/by-id/usb-B\n'; }
+    discover_sources
+    validate_source_set
+    [[ ${#SOURCE_FILES[@]} == 2 && ${SOURCE_FILES[0]} == @auto:SN001:/dev/disk/by-id/usb-A ]]
+    load_source "${SOURCE_FILES[0]}"
+    [[ $RECORDER_SERIAL == SN001 && $REMOTE_DATA == "$STATION_REMOTE_BASE/pegasus_harvester/SN001" &&
+       $STATE_ROOT == "$STATION_STATE_ROOT/sources/SN001" ]]
+}
+test_swapped_recorder_starts_clean_and_old_pending_still_uploads() {
+    source_test_setup
+    RECORDER_DEVICE=''
+    mkdir -p "$STATION_STATE_ROOT/sources/OLD1/pending/2025-01-01"
+    detect_recorders() { printf 'NEW1\t/dev/disk/by-id/usb-N\n'; }
+    discover_sources
+    [[ ${SOURCE_FILES[0]} == @auto:NEW1:* && ${SOURCE_FILES[1]} == @known:OLD1:* ]]
+    load_source "${SOURCE_FILES[1]}"
+    [[ $SOURCE_DRAIN_ONLY == yes && $RECORDER_SERIAL == OLD1 ]]
+}
+test_detect_recorders_probes_only_usb_non_system_disks() {
+    local probe="$STATE_ROOT/probe.sh"
+    printf '%s\n' '#!/usr/bin/env bash' '[[ $1 == digitizer-info && $2 == -i=/dev/sdb ]]' >"$probe"
+    chmod +x "$probe"
+    PEGASUS_BIN=$probe
+    lsblk() {
+        case "$*" in
+            "-dnpo NAME,TYPE,TRAN") printf '/dev/sda disk sata\n/dev/sdb disk usb\n/dev/sdc disk usb\n/dev/sdd disk usb\n' ;;
+            "-snp -o NAME /dev/sda2") printf '/dev/sda2\n/dev/sda\n' ;;
+            "-dn -o SERIAL /dev/sdb") echo SNB ;;
+            "-dn -o SERIAL /dev/sdc") echo SNC ;;
+            "-dn -o SERIAL /dev/sdd") echo '' ;;
+        esac
+    }
+    findmnt() { echo /dev/sda2; }
+    disk_by_id_path() { echo "/dev/disk/by-id/usb-$(basename "$1")"; }
+    [[ $(detect_recorders 2>/dev/null) == $'SNB\t/dev/disk/by-id/usb-sdb' ]]
+}
+test_no_recorder_connected_is_reported_not_fatal() {
+    source_test_setup
+    RECORDER_DEVICE='' CLOUD_READY=yes RUN_STATUS=SUCCESS
+    detect_recorders() { :; }
+    collect_all_sources
+    [[ $RUN_STATUS == PARTIAL ]] && grep -q 'no recorder connected' "$LOG_FILE"
 }
 test_reupload_flag() {
     harvest_day 1735689600 1735776000 reupload:one yes 5

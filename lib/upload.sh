@@ -107,23 +107,42 @@ upload_batch() {
 }
 
 retain_or_remove_batch() {
-    local batch=$1
+    local batch=$1 day
     # Deletion is limited to exact immediate children of the private spool.
     [[ $(dirname -- "$batch") == "$SPOOL" && ! -L $batch &&
        $(basename -- "$batch") =~ ^20[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]] || return 1
-    if [[ $RETAIN_LAST_BATCH == yes ]]; then
-        # Old last-verified data is already acknowledged; pending data is untouched.
-        [[ ! -L $LAST_BATCH && $LAST_BATCH == "$STATE_ROOT/last-verified" ]] || return 1
-        rm -rf -- "$LAST_BATCH.previous"
-        if [[ -d $LAST_BATCH ]]; then mv -T -- "$LAST_BATCH" "$LAST_BATCH.previous" || return 1; fi
-        mv -T -- "$batch" "$LAST_BATCH" || return 1
+    day=$(basename -- "$batch")
+    if [[ ${LOCAL_DATA:-keep} == keep ]]; then
+        # Verified data stays locally until space runs low (see prune_kept).
+        [[ ! -L $KEPT && $KEPT == "$STATE_ROOT/kept" ]] || return 1
+        mkdir -p -- "$KEPT" || return 1
+        rm -rf -- "${KEPT:?}/$day"
+        mv -T -- "$batch" "$KEPT/$day" || return 1
         sync -f "$STATE_ROOT" || return 1
-        rm -rf -- "$LAST_BATCH.previous"
     else
+        # LOCAL_DATA=clean: the Dropbox copy was verified, so remove the local one.
         rm -rf -- "$batch"
-        [[ ! -L $LAST_BATCH && $LAST_BATCH == "$STATE_ROOT/last-verified" ]] || return 1
-        rm -rf -- "$LAST_BATCH" "$LAST_BATCH.previous"
+        [[ ! -L $KEPT && $KEPT == "$STATE_ROOT/kept" ]] || return 1
+        rm -rf -- "${KEPT:?}/$day"
     fi
+}
+
+prune_kept() {
+    # Remove the oldest verified local copies until $1 MiB is free. Only
+    # directories with a verified acknowledgment are ever removed.
+    local target=$1 dir name free
+    [[ -d $KEPT && ! -L $KEPT && $KEPT == "$STATE_ROOT/kept" ]] || return 0
+    while IFS= read -r dir; do
+        free=$(free_mib) || return 0
+        (( free < target )) || return 0
+        name=$(basename -- "$dir")
+        [[ ! -L $dir && -f $VERIFIED/$name.json ]] || continue
+        log "Local storage low (${free} MiB free): removing verified local copy of $name (it remains in Dropbox)"
+        rm -rf -- "$dir"
+    done < <(find "$KEPT" -mindepth 1 -maxdepth 1 -type d -name '20??-??-??' | sort)
+    free=$(free_mib) || return 0
+    (( free >= target )) ||
+        log "WARNING: local storage still low (${free} MiB free) and no verified local copies remain to remove"
 }
 
 drain_pending() {

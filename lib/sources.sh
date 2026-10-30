@@ -14,8 +14,39 @@ discover_sources() {
             find "$SOURCE_PROFILES_DIR" -mindepth 1 -maxdepth 1 -name '*.conf' -print0 | sort -z
         )
     fi
-    # Keep the existing single-recorder paths when no profiles are configured.
-    if ((${#SOURCE_FILES[@]} == 0)); then SOURCE_FILES=('@single-pegasus'); fi
+    if ((${#SOURCE_FILES[@]} > 0)); then return 0; fi
+    if [[ -n ${RECORDER_DEVICE:-} ]]; then
+        # Keep the existing single-recorder paths when one is configured by hand.
+        SOURCE_FILES=('@single-pegasus')
+    else
+        discover_recorders
+    fi
+}
+
+discover_recorders() {
+    # Automatic mode: every attached recorder gets its own state and its own
+    # Dropbox subfolder named by its serial number, so swapping recorders is safe.
+    # Recorders that are gone but still hold unuploaded batches are drained too.
+    local serial link dir id
+    local -A found=()
+    while IFS=$'\t' read -r serial link; do
+        [[ -n $serial ]] || continue
+        SOURCE_FILES+=("@auto:$serial:$link")
+        found[${serial,,}]=1
+    done < <(detect_recorders)
+    if [[ -d ${STATION_STATE_ROOT:-/nonexistent}/sources ]]; then
+        while IFS= read -r -d '' dir; do
+            id=$(basename -- "$dir")
+            [[ -z ${found[${id,,}]+yes} ]] || continue
+            valid_station "$id" || continue
+            if find "$dir/pending" -mindepth 1 -maxdepth 1 -type d \
+                \( -name '20??-??-??' -o -name '.partial-*' \) -print -quit 2>/dev/null | grep -q .; then
+                SOURCE_FILES+=("@known:$id:/dev/disk/by-id/usb-absent")
+            fi
+        done < <(find "$STATION_STATE_ROOT/sources" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null | sort -z)
+    fi
+    ((${#SOURCE_FILES[@]} > 0)) || log "No Pegasus recorder detected on USB"
+    return 0
 }
 
 validate_source_set() {
@@ -43,8 +74,17 @@ validate_source_set() {
 load_source() {
     local profile=$1 kind file target
     declare -gA SOURCE_SETTINGS=()
-    SOURCE_LEGACY=no
-    if [[ $profile == '@single-pegasus' ]]; then
+    SOURCE_LEGACY=no SOURCE_DRAIN_ONLY=no
+    if [[ $profile == @auto:* || $profile == @known:* ]]; then
+        local rest=${profile#@*:} serial
+        serial=${rest%%:*}
+        SOURCE_ID=$serial
+        valid_station "$SOURCE_ID" || { die "Unusable recorder serial: $serial"; return 1; }
+        [[ $profile != @known:* ]] || SOURCE_DRAIN_ONLY=yes
+        SOURCE_SETTINGS[TYPE]=pegasus
+        SOURCE_SETTINGS[RECORDER_SERIAL]=$serial
+        SOURCE_SETTINGS[RECORDER_DEVICE]=${rest#*:}
+    elif [[ $profile == '@single-pegasus' ]]; then
         SOURCE_ID=pegasus SOURCE_LEGACY=yes
         SOURCE_SETTINGS[TYPE]=pegasus
         SOURCE_SETTINGS[RECORDER_DEVICE]=${RECORDER_DEVICE:-}
@@ -77,7 +117,7 @@ load_source() {
         REMOTE_DATA="$STATION_REMOTE_BASE/$target/$SOURCE_ID"
     fi
     SPOOL="$STATE_ROOT/pending" VERIFIED="$STATE_ROOT/verified"
-    OWNERS="$STATE_ROOT/owners" LAST_BATCH="$STATE_ROOT/last-verified"
+    OWNERS="$STATE_ROOT/owners" KEPT="$STATE_ROOT/kept"
     LOG_ROOT=$STATION_LOG_ROOT REMOTE_BASE=$STATION_REMOTE_BASE
     RUN_ID="$STATION_RUN_ID-$SOURCE_ID"
 }
@@ -94,14 +134,31 @@ run_source() (
     fi
     load_source "$profile" || exit 1
     log "Source=$SOURCE_ID provider=${SOURCE_SETTINGS[TYPE]} destination=$REMOTE_DATA"
-    mkdir -p "$SPOOL" "$VERIFIED" "$OWNERS" || exit 1
-    if [[ $action == check ]]; then provider_check; else provider_collect; fi
+    ensure_dirs || exit 1
+    if [[ $action == check ]]; then
+        if [[ $SOURCE_DRAIN_ONLY == yes ]]; then log "Recorder $SOURCE_ID is not connected"; exit 0; fi
+        provider_check
+    else
+        check_local_storage
+        if [[ $SOURCE_DRAIN_ONLY == yes ]]; then
+            # Disconnected recorder: still upload anything already harvested.
+            log "Recorder $SOURCE_ID is not connected; uploading pending data only"
+            drain_pending
+        else
+            provider_collect
+        fi
+    fi
 )
 
 collect_all_sources() {
     log "4. Collect configured sources"
     if [[ $CLOUD_READY != yes ]]; then log "Sources skipped: Dropbox was not verified"; return 0; fi
     discover_sources && validate_source_set || { RUN_STATUS=PARTIAL; return 0; }
+    if ((${#SOURCE_FILES[@]} == 0)); then
+        log "WARNING: no recorder connected; nothing to collect on this boot"
+        RUN_STATUS=PARTIAL
+        return 0
+    fi
     local profile remaining count=${#SOURCE_FILES[@]} budget=$HARVEST_BUDGET_SECONDS
     COLLECTION_DEADLINE=$(( $(uptime_seconds) + budget ))
     for profile in "${SOURCE_FILES[@]}"; do

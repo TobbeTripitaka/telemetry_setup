@@ -498,13 +498,20 @@ establish that every package, recorder, account or BIOS works on a field compute
 - **Ubuntu:** an installed Ubuntu 22.04, 24.04 or 26.04 LTS system using systemd.
   The installer accepts amd64/arm64, but the Nanometrics package must support the
   actual architecture. It does not install or upgrade the operating system.
-- **Recorder identity:** the verified whole-disk `/dev/disk/by-id/...` path and
-  serial. The installer does not guess which disk it should open.
-- **Nanometrics package:** an authorized local `.deb` with a trusted SHA256,
-  a permitted public HTTPS download URL with SHA256, or an already installed
-  native binary. Vendor login and licensing cannot be replaced by the installer.
-- **Dropbox:** the intended project account's authorized rclone configuration,
-  or the full OAuth token JSON. Accept the team-folder invitation first.
+- **Recorder:** nothing to enter. TELE finds a connected Pegasus by itself at
+  every run (see [Recorder detection](#recorder-detection-and-replacement)).
+  Connect the recorder before the installer's final connection check.
+- **Computer name, account and password:** `COMPUTER_NAME`, `OPERATOR_USER` and
+  `OPERATOR_PASSWORD` in the setup file. The installer creates the account, sets
+  the password and enables automatic login.
+- **Nanometrics package:** the authorized `.deb` placed in the SAME folder as the
+  setup file, plus its trusted SHA256 in the setup file. A permitted public HTTPS
+  URL with SHA256, or an already installed native binary, also work. Vendor
+  login and licensing cannot be replaced by the installer.
+- **Dropbox:** the full OAuth token JSON for the project account, pasted into the
+  setup file (`DROPBOX_TOKEN_JSON`). Create it on any computer with a browser, for
+  example a Mac: `brew install rclone`, then `rclone authorize "dropbox"`, signing
+  in as the project account. Accept the team-folder invitation first.
 - **Email:** sender, recipient and a Google app password, not the normal account
   password. Follow [Gmail app-password setup](#gmail-app-password-setup).
 - **Tailscale:** an already enrolled device or an enrollment auth key, plus tailnet
@@ -552,6 +559,85 @@ literal secret in the command line; the CLI supports `--auth-key=file:/path`
 ([Tailscale CLI documentation](https://tailscale.com/docs/reference/tailscale-cli/up)).
 The source bundle remains sensitive after installation, so store it privately
 or remove it according to the project's credential-handling policy.
+
+### What the installer sets up for you
+
+Everything below is done by `INSTALL.sh` from the setup file; none of it needs to
+be done by hand:
+
+- **Computer name:** `COMPUTER_NAME` becomes the hostname (and is the name shown in
+  Tailscale).
+- **Operator account:** `OPERATOR_USER` is created if missing and given
+  `OPERATOR_PASSWORD`, plus membership of the `sudo` group for maintenance. TELE
+  itself runs as root from systemd and never uses sudo, so a sudo password cannot
+  stop a run.
+- **Automatic login and no lock screen** (`AUTOLOGIN=yes`): GDM (Ubuntu desktop) or
+  LightDM logs the account in without a password, and the desktop never locks,
+  blanks the screen or sleeps. The first-run welcome wizard is skipped. This takes
+  effect at the next boot. On a server install without a display manager the
+  installer says so and skips it.
+- **Updates:** one update during installation, then automatic updates off (see
+  [Updates and installation timing](#updates-and-installation-timing)).
+- **Clock:** UTC with network time.
+- **Local data policy** (`LOCAL_DATA`): see
+  [Local data: keep or clean](#local-data-keep-or-clean).
+
+What cannot be automated, and is therefore the technician's short list:
+
+1. **Copy two things to the computer:** the setup file and the Nanometrics `.deb`,
+   into one folder, for example `/root/tele/`.
+2. **Protect and run:**
+   ```bash
+   # Run on: the Ubuntu station.
+   sudo chown root:root /root/tele/*
+   sudo chmod 600 /root/tele/setup.conf
+   sudo bash INSTALL.sh --config /root/tele/setup.conf --mode confirm
+   ```
+3. **Connect the recorder** by USB before the stage "Check recorder, Dropbox and email".
+4. **BIOS:** enable the weekly RTC wake and restore-on-power settings
+   ([BIOS section](#configure-bios-wake-up-and-shutdown-behaviour)); firmware cannot
+   be set from Ubuntu.
+5. **USB relay port:** test that the chosen port releases the relay after shutdown
+   ([port test](#choose-and-test-the-usb-relay-control-port)).
+6. **Delete the setup file** from the computer when installation is accepted.
+
+### Recorder detection and replacement
+
+No recorder serial or device path is entered anywhere. At every run `tele.sh`
+lists the computer's USB disks (never the system disk), asks the native Harvester
+to identify each one in its read-only safe mode, and treats those that answer as
+recorders.
+
+- **Each recorder has its own state and Dropbox folder**, named by its serial
+  number: `<station>/pegasus_harvester/<serial>/`. The Harvester's own folder
+  layout below that is untouched. A replacement recorder therefore starts a fresh
+  history and can never overwrite another recorder's files.
+- **A recorder that is unplugged but still has unuploaded days** is still drained:
+  the run uploads the pending days even though the device is gone.
+- **No recorder connected:** the run uploads logs, sends the email marked PARTIAL
+  (with "no recorder connected") and powers off as normal.
+- **Two recorders at once** are collected one after the other within the harvest
+  budget.
+- **A fixed recorder** can still be pinned with `RECORDER_DEVICE` and
+  `RECORDER_SERIAL` (both together) or `SOURCES_JSON`; the paths and state used by
+  existing installations are then kept as they were.
+
+### Local data: keep or clean
+
+`LOCAL_DATA` in `config.txt` (also changeable from the Dropbox copy) decides what
+happens to the local copy after Dropbox has verified it:
+
+- **`keep`** (default): the verified days stay in
+  `/var/lib/tele/<station>/kept/<day>/`. When free space drops below twice
+  `MIN_FREE_MIB` (4 GiB by default) the OLDEST verified days are removed first, so
+  collection never stops for lack of space. Days that are not yet verified are
+  never removed.
+- **`clean`**: each local copy is deleted immediately after its verified upload.
+
+In both modes the log (and therefore the email) carries a line starting with
+`WARNING: local storage is getting low` once free space falls below four times
+`MIN_FREE_MIB` (8 GiB by default). The older `RETAIN_LAST_BATCH=yes/no` is still
+accepted and means `keep`/`clean`.
 
 ### Choose the mode
 
@@ -692,9 +778,11 @@ steps and `lib/sources.sh` dispatches collectors. Each trusted module implements
 validation, destination naming, inspection and collection, with one private
 profile per source. The [module guide](docs/MODULES.md) documents the contract.
 
-For a single existing recorder, leave `/etc/tele/sources.d/` empty and retain
-`RECORDER_DEVICE`/`RECORDER_SERIAL` in `node.conf`. This preserves the original
-state and `pegasus_harvester/` upload paths.
+By default no recorder is configured and each connected recorder is found
+automatically (see [Recorder detection](#recorder-detection-and-replacement)).
+For an installation that already pins a single recorder, leave `/etc/tele/sources.d/`
+empty and keep `RECORDER_DEVICE`/`RECORDER_SERIAL` in `node.conf`. This preserves
+the original state and `pegasus_harvester/` upload paths.
 
 For multiple recorders, put `SOURCES_JSON` in the setup bundle, for example:
 
@@ -777,6 +865,11 @@ timezone does not prove the wake alarm uses the time you expect.
 
 ### Linux accounts
 
+The master installer creates the operator account, sets its password, and enables
+automatic login from the setup file (see
+[What the installer sets up for you](#what-the-installer-sets-up-for-you)). The
+manual commands below are only needed when installing without it.
+
 Use an existing administrative account to provision the station. The collector
 is a root-owned system service, while the `tele` account is used for permitted
 remote administration and the private VNC desktop.
@@ -804,7 +897,9 @@ blanket passwordless sudo to make installation convenient.
 
 ### Graphical autologin and desktop choices
 
-Graphical autologin is optional. The system service starts TELE without a desktop
+The master installer enables graphical autologin and disables the lock screen by
+default (`AUTOLOGIN=yes`); set `AUTOLOGIN=no` to leave the login screen alone. The
+rest of this section applies to manual setups. Graphical autologin is optional. The system service starts TELE without a desktop
 login, so there is no need to enable autologin for data collection.
 If you need it for another local task, see
 [Ubuntu's autologin instructions](https://help.ubuntu.com/stable/ubuntu-help/user-autologin.html.en).
@@ -1335,7 +1430,8 @@ real recorder, a live Dropbox connection and the station's power hardware.
   pending/
   verified/
   owners/
-  last-verified/
+  kept/                         # verified days, when LOCAL_DATA=keep
+  sources/<serial>/             # one state tree per automatically found recorder
   config.txt                    # last validated remote settings
   recorder-id
 /var/log/tele/<station_name>/
@@ -1760,7 +1856,7 @@ VNC_PORT=5901
 |---|---|
 | `RCLONE_REMOTE` | Configured remote name without its trailing colon |
 | `DROPBOX_ROOT` | Optional root prefix; spaces are supported and a leading `/` is preserved. Verify the exact team folder and account permissions before collection. |
-| `RECORDER_SERIAL` | Exact trimmed serial exposed by `lsblk`; uses the same identifier character restriction |
+| `RECORDER_SERIAL` | Optional (leave both recorder keys out for automatic detection). Exact trimmed serial exposed by `lsblk`; same identifier character restriction |
 | `RECORDER_DEVICE` | Absolute whole-disk `/dev/disk/by-id/...` link, not a partition link |
 | `RCLONE_CONFIG` | Absolute protected rclone configuration path |
 | `PEGASUS_BIN` | Absolute native executable path |
@@ -1798,7 +1894,7 @@ EXECUTE=auto
 HARVEST_MODE=incremental
 HARVEST_BUDGET_SECONDS=3600
 MAINTENANCE_IDLE_SECONDS=600
-RETAIN_LAST_BATCH=yes
+LOCAL_DATA=keep
 ```
 
 `station` is a lowercase key. Its value is one directory name, with 1–64 letters,
@@ -2051,7 +2147,7 @@ rather than choosing a guessed upload folder. No configuration is executed as sh
 | `HARVEST_BUDGET_SECONDS` | `3600` | Integer 1–3600; shared source-collection allowance, including device/network calls |
 | `NETWORK_TIMEOUT_SECONDS` | `300` | Integer 10–600; bound for each rclone operation |
 | `NETWORK_WAIT_SECONDS` | `1200` | Integer 0–3600; after boot, keep retrying Dropbox every 30 s while Starlink starts. Collection is skipped only if it is still unreachable after this wait |
-| `RETAIN_LAST_BATCH` | `yes` | `yes` or `no`; pending completed uploads remain in either case |
+| `LOCAL_DATA` | `keep` | `keep` or `clean`; pending (not yet verified) days are never removed in either case. Legacy `RETAIN_LAST_BATCH=yes/no` maps to `keep`/`clean` |
 | `MIN_FREE_MIB` | `2048` | Integer 256–1048576; free-space reserve threshold |
 | `OVERLAP_DAYS` | `2` | Integer 1–30; revisit recent days as well as unverified/open days |
 
@@ -2066,7 +2162,7 @@ station=station01
 EXECUTE=auto
 HARVEST_MODE=incremental
 HARVEST_BUDGET_SECONDS=3600
-RETAIN_LAST_BATCH=yes
+LOCAL_DATA=keep
 ```
 
 This is the power-saving unattended mode. It does not wait for SSH/VNC after
@@ -2080,7 +2176,7 @@ station=station01
 EXECUTE=ssh
 HARVEST_MODE=incremental
 MAINTENANCE_IDLE_SECONDS=600
-RETAIN_LAST_BATCH=yes
+LOCAL_DATA=keep
 ```
 
 The normal idle countdown begins after the other stages finish. Detected sessions
@@ -2111,7 +2207,7 @@ station=station01
 EXECUTE=auto
 HARVEST_MODE=reconcile
 REQUEST_ID=full-check-2026-09
-RETAIN_LAST_BATCH=yes
+LOCAL_DATA=keep
 ```
 
 `reconcile` re-exports the recorder's retained history and uploads missing or
@@ -2740,8 +2836,8 @@ this bench configuration on a battery-powered remote site.
   and verification.
 - **`verified/`:** small daily metadata receipts, not copies of the waveform archive.
 - **`owners/`:** records used to detect ambiguous reuse of native paths.
-- **`last-verified/`:** the last successfully verified daily batch when retention
-  is enabled.
+- **`kept/`:** verified daily batches, when `LOCAL_DATA=keep`; the oldest are
+  removed first when free space runs low.
 - **Cached config/identity:** last validated settings and the bound recorder serial.
 - **Logs:** recent run/diagnostic files and pending log snapshots.
 
@@ -3070,7 +3166,7 @@ missing or changed content once the underlying fault is understood.
 # Run on: Ubuntu station.
 df -h /var/lib/tele /var/log/tele
 sudo du -sh /var/lib/tele/station01/pending
-sudo du -sh /var/lib/tele/station01/last-verified
+sudo du -sh /var/lib/tele/station01/kept
 sudo du -sh /var/log/tele/station01
 ```
 

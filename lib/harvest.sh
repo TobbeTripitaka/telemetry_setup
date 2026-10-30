@@ -112,6 +112,7 @@ harvest_cycle() {
             remaining=$((COLLECTION_DEADLINE - $(uptime_seconds)))
         fi
         (( remaining > 0 )) || { log "Harvest budget exhausted; remaining days resume next boot"; return 1; }
+        check_local_storage
         disk_has_reserve || { die "Insufficient free space"; return 1; }
         log "Harvesting UTC day $day (native paths, 24-hour files)"
         harvest_day "$cursor" "$((cursor+86400))" "$request" "$force" "$remaining" || return 1

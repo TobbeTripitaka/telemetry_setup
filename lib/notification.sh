@@ -60,6 +60,7 @@ send_notification() {
         printf 'MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'
         printf 'Station: %s\nRun: %s\nStatus: %s\nMode: %s\nPending/incomplete batches: %s\n' \
             "$STATION_NAME" "$RUN_ID" "$status" "$HARVEST_MODE" "$pending"
+        printf 'Local data: %s; free disk: %s MiB\n' "${LOCAL_DATA:-keep}" "$(free_mib 2>/dev/null || echo unknown)"
         printf 'Dropbox: %s\nPost-run mode: %s\nIdle maintenance window: %ss\n' \
             "$REMOTE_BASE" "$EXECUTE" "$MAINTENANCE_IDLE_SECONDS"
         printf 'Run mode: %s\nSources succeeded: %s; failed: %s\n' \

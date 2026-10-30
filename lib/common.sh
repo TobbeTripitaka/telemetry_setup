@@ -34,7 +34,7 @@ set_station_paths() {
     SPOOL="$STATE_ROOT/pending"
     VERIFIED="$STATE_ROOT/verified"
     OWNERS="$STATE_ROOT/owners"
-    LAST_BATCH="$STATE_ROOT/last-verified"
+    KEPT="$STATE_ROOT/kept"
     LOG_ROOT="/var/log/tele/$STATION_NAME"
     local prefix=$DROPBOX_ROOT
     [[ -z $prefix || $prefix == / ]] || prefix="$prefix/"
@@ -42,9 +42,36 @@ set_station_paths() {
     REMOTE_DATA="$REMOTE_BASE/pegasus_harvester"
 }
 
+ensure_dirs() {
+    # Every local folder is created up front, so a missing directory can never
+    # be the reason a run stops. mkdir -p is idempotent.
+    mkdir -p -- "$STATE_ROOT" "$SPOOL" "$VERIFIED" "$OWNERS" "$KEPT" "$LOG_ROOT" || return 1
+}
+
+free_mib() {
+    local kb
+    kb=$(df -Pk "$STATE_ROOT" | awk 'NR==2 {print $4}') || return 1
+    [[ $kb =~ ^[0-9]+$ ]] || return 1
+    printf '%s\n' $((kb / 1024))
+}
+
+check_local_storage() {
+    # Warn early. In keep mode, make room by removing the OLDEST verified local
+    # copies (they are already in Dropbox) rather than stopping collection.
+    local free
+    free=$(free_mib) || { log "WARNING: cannot read free local disk space"; return 0; }
+    if (( free < MIN_FREE_MIB * 4 )); then
+        log "WARNING: local storage is getting low: ${free} MiB free (collection stops below ${MIN_FREE_MIB} MiB)"
+    fi
+    if [[ ${LOCAL_DATA:-keep} == keep ]] && (( free < MIN_FREE_MIB * 2 )); then
+        prune_kept $((MIN_FREE_MIB * 2))
+    fi
+    return 0
+}
+
 init_workspace() {
     set_station_paths || return 1
-    mkdir -p -- "$SPOOL" "$VERIFIED" "$OWNERS" "$LOG_ROOT" || return 1
+    ensure_dirs || return 1
     RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$$"
     LOG_FILE="$LOG_ROOT/$RUN_ID.log"
     touch "$LOG_FILE" || return 1

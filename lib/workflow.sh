@@ -148,6 +148,9 @@ check_setup() {
     log "CHECK: local configuration is valid"
     verify_remote || { log "CHECK FAILED: Dropbox access/hash support"; failed=1; }
     discover_sources && validate_source_set || return 1
+    if ((${#SOURCE_FILES[@]} == 0)); then
+        log "CHECK FAILED: no Pegasus recorder detected (connect it by USB and rerun)"; failed=1
+    fi
     for profile in "${SOURCE_FILES[@]}"; do
         if run_source "$profile" check; then
             log "CHECK OK: ${profile##*/}"

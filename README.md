@@ -212,7 +212,7 @@ station=station01
 EXECUTE=auto
 HARVEST_MODE=incremental
 HARVEST_BUDGET_SECONDS=3600
-RETAIN_LAST_BATCH=yes
+LOCAL_DATA=keep
 ```
 
 To leave time for SSH access after collection:
@@ -222,7 +222,7 @@ station=station01
 EXECUTE=ssh
 HARVEST_MODE=incremental
 MAINTENANCE_IDLE_SECONDS=600
-RETAIN_LAST_BATCH=yes
+LOCAL_DATA=keep
 ```
 
 To check the full recorder archive without unnecessarily sending matching

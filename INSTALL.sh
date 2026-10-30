@@ -18,6 +18,7 @@ fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 say() { printf '%s\n' "$*"; }
 declare -gA SETUP=()
 APT_NO_AUTO_CONF=/etc/apt/apt.conf.d/99tele-no-automatic-updates
+GDM_DIR=/etc/gdm3 LIGHTDM_DIR=/etc/lightdm DCONF_DIR=/etc/dconf HOSTS_FILE=/etc/hosts HOME_BASE=/home
 MODE=confirm CONFIG='' REF=main SOURCE_DIR='' ENABLE_FIELD=no WORK='' CURRENT_STAGE=arguments
 cleanup() {
     local rc=$?
@@ -66,7 +67,7 @@ parse_setup() {
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
           OPERATOR_USER|TAILSCALE_AUTH_KEY|ENABLE_VNC|VNC_PASSWORD|\
           STARLINK_ADDRESS|STARLINK_SNOW_MELT|EMERGENCY_SECONDS|DISABLE_SLEEP|\
-          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|\
+          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|\
           EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|NETWORK_WAIT_SECONDS|\
           UPLOAD_TEST|EMAIL_TEST) ;;
           *) fail "Unknown setup key: $key" ;;
@@ -146,13 +147,27 @@ validate_setup() {
     valid_station "$(get station)" || fail 'A valid station is required'
     USER_NAME=$(get OPERATOR_USER tele)
     [[ $USER_NAME =~ ^[a-z_][a-z0-9_-]{0,30}$ && $USER_NAME != root ]] || fail 'Invalid OPERATOR_USER'
+    COMPUTER_NAME=$(get COMPUTER_NAME)
+    [[ -z $COMPUTER_NAME || $COMPUTER_NAME =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
+        fail 'COMPUTER_NAME: lowercase letters, digits and hyphens only (for example tele9)'
+    OPERATOR_PASSWORD=$(get OPERATOR_PASSWORD)
+    [[ -z $OPERATOR_PASSWORD || $OPERATOR_PASSWORD =~ ^[^[:space:]:]{6,64}$ ]] ||
+        fail 'OPERATOR_PASSWORD: 6-64 visible characters, no spaces and no colon'
+    if [[ -z $OPERATOR_PASSWORD ]] && ! id "$USER_NAME" >/dev/null 2>&1; then
+        fail "OPERATOR_PASSWORD is required to create the account '$USER_NAME'"
+    fi
+    LOCAL_DATA_VALUE=$(get LOCAL_DATA)
+    if [[ -z $LOCAL_DATA_VALUE ]]; then
+        [[ $(get RETAIN_LAST_BATCH yes) == no ]] && LOCAL_DATA_VALUE=clean || LOCAL_DATA_VALUE=keep
+    fi
+    [[ $LOCAL_DATA_VALUE =~ ^(keep|clean)$ ]] || fail 'LOCAL_DATA must be keep or clean'
     REMOTE=$(get RCLONE_REMOTE tele_dropbox)
     node_key RCLONE_REMOTE "$REMOTE" || fail 'Invalid remote name'
     node_key DROPBOX_ROOT "$(get DROPBOX_ROOT)" || fail 'Invalid Dropbox root'
     node_key STARLINK_ADDRESS "$(get STARLINK_ADDRESS 192.168.100.1:9200)" || fail 'Invalid Starlink address'
     local key
-    for key in ENABLE_VNC DISABLE_SLEEP UPLOAD_TEST EMAIL_TEST RETAIN_LAST_BATCH \
-               SYSTEM_UPGRADE DISABLE_AUTO_UPDATES; do
+    for key in ENABLE_VNC DISABLE_SLEEP UPLOAD_TEST EMAIL_TEST \
+               SYSTEM_UPGRADE DISABLE_AUTO_UPDATES AUTOLOGIN; do
         [[ $(get "$key" yes) =~ ^(yes|no)$ ]] || fail "$key must be yes/no"
     done
     [[ $(get STARLINK_SNOW_MELT read) =~ ^(read|off)$ ]] || fail 'STARLINK_SNOW_MELT must be read/off'
@@ -179,6 +194,23 @@ validate_setup() {
     else
         private_file /etc/tele/rclone.conf
     fi
+    local config_dir deb found
+    config_dir=$(dirname -- "$(readlink -f -- "$CONFIG")")
+    if [[ -n $(get HARVESTER_DEB) && $(get HARVESTER_DEB) != /* ]]; then
+        # A bare file name means "next to the credentials file".
+        SETUP[HARVESTER_DEB]="$config_dir/$(get HARVESTER_DEB)"
+    fi
+    if [[ -z $(get HARVESTER_DEB) && -z $(get HARVESTER_URL) &&
+          ! -x $(get PEGASUS_BIN /opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester) ]]; then
+        found=$(find "$config_dir" -maxdepth 1 -type f -iname '*harvester*.deb' | sort)
+        if [[ -n $found && $(wc -l <<<"$found") == 1 ]]; then
+            SETUP[HARVESTER_DEB]=$found
+            say "Using the Nanometrics package found next to the setup file: $found"
+        fi
+    fi
+    if [[ -n $(get HARVESTER_DEB) ]]; then
+        [[ -f $(get HARVESTER_DEB) ]] || fail "Harvester package not found: $(get HARVESTER_DEB)"
+    fi
     [[ -z $(get HARVESTER_DEB) || -z $(get HARVESTER_URL) ]] || fail 'Choose one Harvester package input'
     if [[ -n $(get HARVESTER_DEB) || -n $(get HARVESTER_URL) ]]; then
         [[ $(get HARVESTER_SHA256) =~ ^[a-fA-F0-9]{64}$ ]] || fail 'Harvester package requires trusted SHA256'
@@ -203,11 +235,11 @@ validate_setup() {
             ([.[].id]|length)==([.[].id|ascii_downcase]|unique|length) and
             ([.[].serial]|length)==([.[].serial|ascii_downcase]|unique|length)' "$WORK/sources.json" >/dev/null ||
             fail 'Invalid/duplicate recorder profiles in SOURCES_JSON'
-    else
+    elif [[ -n $(get RECORDER_DEVICE) || -n $(get RECORDER_SERIAL) ]]; then
         [[ $(get RECORDER_DEVICE) =~ ^/dev/disk/by-id/[A-Za-z0-9_.:+-]+$ &&
            ! $(get RECORDER_DEVICE) =~ -part[0-9]+$ &&
            $(get RECORDER_SERIAL) =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] ||
-            fail 'Provide the verified whole-disk by-id path and serial, or SOURCES_JSON'
+            fail 'RECORDER_DEVICE and RECORDER_SERIAL must be given together (whole-disk by-id path), or leave both empty for automatic detection'
     fi
 }
 verified_deb() {
@@ -260,7 +292,7 @@ system_updates() {
 }
 install_packages() {
     apt_install bash coreutils util-linux findutils grep sed gawk openssh-server \
-        iproute2 procps usbutils file rsync tzdata dbus gnupg
+        iproute2 procps usbutils file rsync tzdata dbus gnupg dconf-cli
     verified_deb https://github.com/rclone/rclone/releases/download/v1.75.2 \
         "rclone-v1.75.2-linux-$ARCH.deb" SHA256SUMS
     verified_deb https://github.com/fullstorydev/grpcurl/releases/download/v1.9.4 \
@@ -284,12 +316,78 @@ install_packages() {
     [[ -x $BIN ]] || fail 'Native Harvester is not executable at PEGASUS_BIN'
     timeout -k 5 30 "$BIN" version -all
 }
-linux_settings() {
+set_computer_name() {
+    [[ -n $COMPUTER_NAME ]] || return 0
+    hostnamectl set-hostname "$COMPUTER_NAME"
+    if grep -qE '^127\.0\.1\.1[[:space:]]' "$HOSTS_FILE"; then
+        sed -i -E "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1 $COMPUTER_NAME/" "$HOSTS_FILE"
+    else
+        printf '127.0.1.1 %s\n' "$COMPUTER_NAME" >>"$HOSTS_FILE"
+    fi
+    say "Computer name: $COMPUTER_NAME"
+}
+set_operator_account() {
     if ! id "$USER_NAME" >/dev/null 2>&1; then
         useradd --create-home --shell /bin/bash "$USER_NAME"
     fi
     [[ $(getent passwd "$USER_NAME" | cut -d: -f6) == "/home/$USER_NAME" ]] ||
         fail 'VNC unit requires operator home /home/OPERATOR_USER'
+    if [[ -n $OPERATOR_PASSWORD ]]; then
+        # printf is a shell builtin, so the password never appears in a process list.
+        printf '%s:%s\n' "$USER_NAME" "$OPERATOR_PASSWORD" | chpasswd
+    fi
+    # Maintenance by SSH/VNC needs sudo with the account's own password. The TELE
+    # services themselves run as root under systemd and never use sudo.
+    usermod -aG sudo "$USER_NAME"
+    say "Account '$USER_NAME' is ready."
+}
+set_autologin() {
+    [[ $(get AUTOLOGIN yes) == yes ]] || return 0
+    local touched=no conf="$GDM_DIR/custom.conf"
+    if [[ -d "$GDM_DIR" ]]; then
+        [[ -e $conf ]] || install -m 644 /dev/null "$conf"
+        [[ -e $conf.tele-original ]] || cp -a -- "$conf" "$conf.tele-original"
+        grep -vE '^[#[:space:]]*AutomaticLogin(Enable)?[[:space:]]*=' "$conf" >"$WORK/gdm.conf" || true
+        if grep -q '^\[daemon\]' "$WORK/gdm.conf"; then
+            sed -i "/^\[daemon\]/a AutomaticLoginEnable=true\nAutomaticLogin=$USER_NAME" "$WORK/gdm.conf"
+        else
+            printf '[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=%s\n' "$USER_NAME" >>"$WORK/gdm.conf"
+        fi
+        install -m 644 "$WORK/gdm.conf" "$conf"
+        touched=yes
+    fi
+    if [[ -d "$LIGHTDM_DIR" ]]; then
+        install -d -m 755 "$LIGHTDM_DIR/lightdm.conf.d"
+        printf '[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\n' "$USER_NAME" \
+            >"$LIGHTDM_DIR/lightdm.conf.d/50-tele-autologin.conf"
+        touched=yes
+    fi
+    # No lock screen, no screen blanking, no sleep from the desktop settings.
+    install -d -m 755 "$DCONF_DIR/profile" "$DCONF_DIR/db/local.d"
+    if ! grep -qx 'system-db:local' "$DCONF_DIR/profile/user" 2>/dev/null; then
+        printf 'user-db:user\nsystem-db:local\n' >"$DCONF_DIR/profile/user"
+    fi
+    printf '%s\n' \
+        '[org/gnome/desktop/screensaver]' 'lock-enabled=false' 'idle-activation-enabled=false' '' \
+        '[org/gnome/desktop/session]' 'idle-delay=uint32 0' '' \
+        '[org/gnome/settings-daemon/plugins/power]' \
+        "sleep-inactive-ac-type='nothing'" "sleep-inactive-battery-type='nothing'" \
+        >"$DCONF_DIR/db/local.d/00-tele-field"
+    dconf update
+    # Skip the first-run welcome wizard for this account.
+    install -d -o "$USER_NAME" -g "$(id -gn "$USER_NAME")" -m 700 "$HOME_BASE/$USER_NAME/.config"
+    printf 'yes\n' >"$HOME_BASE/$USER_NAME/.config/gnome-initial-setup-done"
+    chown "$USER_NAME:$(id -gn "$USER_NAME")" "$HOME_BASE/$USER_NAME/.config/gnome-initial-setup-done"
+    if [[ $touched == yes ]]; then
+        say "Automatic login for '$USER_NAME' and no lock screen take effect at the next boot."
+    else
+        say 'WARNING: no GDM or LightDM found (server install?). Automatic login was not configured.'
+    fi
+}
+linux_settings() {
+    set_computer_name
+    set_operator_account
+    set_autologin
     timedatectl set-timezone UTC
     if [[ $(timedatectl show -p CanNTP --value) == no ]]; then
         apt_install systemd-timesyncd
@@ -300,7 +398,7 @@ linux_settings() {
         systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target
     fi
     systemctl enable --now ssh
-    # Do not change firewalls, passwords, sudo policy, network routes or BIOS.
+    # Do not change firewalls, sudo policy, network routes or BIOS.
 }
 install_tailscale() {
     download "https://pkgs.tailscale.com/stable/ubuntu/$CODENAME.noarmor.gpg" "$WORK/tailscale.gpg"
@@ -350,7 +448,7 @@ install_release_and_config() {
         printf 'PEGASUS_BIN=%s\nVNC_SERVICE=tele-vnc@%s.service\nVNC_PORT=5901\n' "$BIN" "$USER_NAME"
         printf 'STARLINK_ADDRESS=%s\nSTARLINK_EXPECT_SNOW_OFF=%s\n' "$STARLINK_ADDRESS" \
             "$([[ $(get STARLINK_SNOW_MELT read) == off ]] && printf yes || printf no)"
-        if [[ ! -f $WORK/sources.json ]]; then
+        if [[ ! -f $WORK/sources.json && -n $(get RECORDER_DEVICE) ]]; then
             printf 'RECORDER_DEVICE=%s\nRECORDER_SERIAL=%s\n' "$(get RECORDER_DEVICE)" "$(get RECORDER_SERIAL)"
         fi
     } >"$WORK/config/node.conf"
@@ -360,7 +458,7 @@ install_release_and_config() {
         printf 'HARVEST_BUDGET_SECONDS=%s\n' "$(get HARVEST_BUDGET_SECONDS 3600)"
         printf 'MAINTENANCE_IDLE_SECONDS=%s\n' "$(get MAINTENANCE_IDLE_SECONDS 600)"
         printf 'NETWORK_WAIT_SECONDS=%s\n' "$(get NETWORK_WAIT_SECONDS 1200)"
-        printf 'RETAIN_LAST_BATCH=%s\n' "$(get RETAIN_LAST_BATCH yes)"
+        printf 'LOCAL_DATA=%s\n' "$LOCAL_DATA_VALUE"
     } >"$WORK/config/config.txt"
     for key in EMAIL_FROM EMAIL_TO EMAIL_PASSWORD; do
         printf '%s=%s\n' "$key" "$(get "$key")"
@@ -506,7 +604,7 @@ main() {
         say '2. Install bootstrap tools, fetch one Git revision, validate private setup.'
         say '3. Update Ubuntu/snaps once; turn off automatic apt/snap updates for field boots.'
         say '3b. Install dependencies, pinned rclone/grpcurl and approved Harvester.'
-        say '4. Configure operator account, UTC/NTP, optional sleep masks and SSH.'
+        say '4. Set computer name, operator account and password, automatic login, no lock screen, UTC/NTP, optional sleep masks and SSH.'
         say '5. Install/enroll Tailscale with SSH enabled.'
         say '6. Back up private settings, deploy release, write configuration/profiles.'
         say '7. Install VNC and inactive systemd power-protection units.'

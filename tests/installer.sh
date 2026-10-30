@@ -242,19 +242,71 @@ test_bundle_with_placeholders_is_refused() {
 }
 test_apt_never_waits_on_the_terminal() {
     source "$ROOT/INSTALL.sh"
-    local out="$BASE/apt-run"
+    WORK="$BASE/watch-work"; mkdir -p "$WORK"; WATCH_INTERVAL=0.1
+    local capture="$BASE/apt-run"
     timeout() {
         { printf 'args:%s\n' "$*"; printf 'needrestart:%s/%s\n' "$NEEDRESTART_MODE" "$NEEDRESTART_SUSPEND"
-          printf 'frontend:%s\n' "$DEBIAN_FRONTEND"; printf 'stdin:'; cat; printf '\n'; } >"$out"
+          printf 'frontend:%s\n' "$DEBIAN_FRONTEND"; printf 'stdin:'; cat; printf '\n'; } >"$capture"
     }
-    echo "would-be-keyboard-input" | apt_install curl
+    echo "would-be-keyboard-input" | apt_install curl >/dev/null
     # A bare `timeout` would leave apt in a background process group (silently
     # stopped when anything reads the terminal); stdin must also be closed.
-    grep -q '^args:--foreground -k 30 1800 apt-get' "$out"
-    grep -q 'install -y curl' "$out"
-    grep -qx 'needrestart:a/1' "$out"
-    grep -qx 'frontend:noninteractive' "$out"
-    grep -qx 'stdin:' "$out"
+    grep -q '^args:--foreground -k 30 1800 apt-get' "$capture"
+    grep -q 'install -y curl' "$capture"
+    grep -qx 'needrestart:a/1' "$capture"
+    grep -qx 'frontend:noninteractive' "$capture"
+    grep -qx 'stdin:' "$capture"
+}
+test_watched_streams_output_and_returns_status() {
+    source "$ROOT/INSTALL.sh"
+    WORK="$BASE/watch-work2"; mkdir -p "$WORK"; WATCH_INTERVAL=0.1
+    local text rc
+    text=$(watched 10 'say hello' bash -c 'echo line-one; echo line-two >&2; exit 0')
+    [[ $text == *line-one* && $text == *line-two* ]]
+    set +e; text=$(watched 10 'fails' bash -c 'echo boom; exit 3'); rc=$?; set -e
+    [[ $rc == 3 && $text == *boom* && $text == *"exited with status 3"* ]]
+}
+test_watched_stops_a_command_at_its_time_limit() {
+    source "$ROOT/INSTALL.sh"
+    WORK="$BASE/watch-work3"; mkdir -p "$WORK"; WATCH_INTERVAL=0.1
+    local text rc started=$SECONDS
+    set +e; text=$(watched 1 'sleeper' sleep 30); rc=$?; set -e
+    [[ $rc == 124 && $text == *"did not finish within 1s"* ]]
+    (( SECONDS - started < 15 ))
+}
+test_watched_gives_commands_no_keyboard() {
+    source "$ROOT/INSTALL.sh"
+    WORK="$BASE/watch-work4"; mkdir -p "$WORK"; WATCH_INTERVAL=0.1
+    local text
+    # A command that tries to read the terminal must see end-of-file, not wait.
+    text=$(watched 10 'reads stdin' bash -c 'read -r line && echo "got:$line" || echo eof')
+    [[ $text == *eof* ]]
+}
+test_stopped_process_is_resumed() {
+    source "$ROOT/INSTALL.sh"
+    sleep 30 & local pid=$!
+    kill -STOP "$pid"; sleep 0.3
+    [[ $(ps -o stat= -p "$pid") == T* ]]
+    unstick "$pid" >/dev/null
+    sleep 0.3
+    local state; state=$(ps -o stat= -p "$pid")
+    kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+    [[ $state != T* ]]
+}
+test_watched_reports_a_silent_command() {
+    source "$ROOT/INSTALL.sh"
+    WORK="$BASE/watch-work5"; mkdir -p "$WORK"; WATCH_INTERVAL=0.2 STALL_SECONDS=1
+    local text
+    text=$(watched 10 'quiet job' bash -c 'sleep 3')
+    [[ $text == *"no output from 'quiet job'"* && $text == *"PID"* ]]
+}
+test_upgrade_off_says_so() {
+    source "$ROOT/INSTALL.sh"
+    WORK="$BASE/upd-work"; mkdir -p "$WORK"
+    APT_NO_AUTO_CONF="$BASE/99tele-off"
+    declare -gA SETUP=([SYSTEM_UPGRADE]=no [DISABLE_AUTO_UPDATES]=no)
+    local text; text=$(system_updates)
+    [[ $text == *"SYSTEM_UPGRADE=no: skipping"* ]]
 }
 test_stage_failure_stops_before_activation() {
     # A fresh strict shell is essential: an if-function context masks errexit.

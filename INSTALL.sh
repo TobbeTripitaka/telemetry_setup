@@ -17,7 +17,15 @@ usage() {
       'Never run on a battery-powered station with its field service/timer active.'
 }
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
-say() { printf '%s\n' "$*"; }
+INSTALL_LOG=/var/log/tele-install.log
+say() {
+    printf '%s\n' "$*"
+    { printf '%s\n' "$*" >>"$INSTALL_LOG"; } 2>/dev/null || true
+}
+# Nothing the installer starts may ever ask a question: no debconf dialogs, no
+# needrestart prompt, no changed-config-file prompt, no changelog pager.
+export DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1
+export UCF_FORCE_CONFFOLD=1 APT_LISTCHANGES_FRONTEND=none PAGER=cat SYSTEMD_PAGER=
 declare -gA SETUP=()
 APT_NO_AUTO_CONF=/etc/apt/apt.conf.d/99tele-no-automatic-updates
 GDM_DIR=/etc/gdm3 LIGHTDM_DIR=/etc/lightdm DCONF_DIR=/etc/dconf HOSTS_FILE=/etc/hosts HOME_BASE=/home
@@ -83,22 +91,98 @@ parse_setup() {
 }
 get() { printf '%s' "${SETUP[$1]:-${2:-}}"; }
 download() {
-    timeout -k 10 300 curl --fail --silent --show-error --location \
+    timeout --foreground -k 10 300 curl --fail --silent --show-error --location \
         --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 280 \
         "$1" --output "$2"
 }
+descendants() {
+    # PIDs of $1 and everything below it.
+    ps -eo pid=,ppid= | awk -v root="$1" '
+        { p[$1] = $2 }
+        END { for (i in p) { a = i; n = 0
+                while (a != "" && a != root && a != 0 && a != 1 && n++ < 100) a = p[a]
+                if (a == root) print i }
+              print root }' | sort -un
+}
+
+unstick() {
+    # A program that reads the terminal from the background is stopped silently
+    # by the kernel (state T). Resume anything below $1 that is stopped.
+    local pid resumed=''
+    for pid in $(descendants "$1"); do
+        if [[ $(ps -o stat= -p "$pid" 2>/dev/null) == T* ]]; then
+            kill -CONT "$pid" 2>/dev/null && resumed="$resumed $pid"
+        fi
+    done
+    [[ -z $resumed ]] || printf '%s' "$resumed"
+}
+
+process_report() {
+    # What is it doing? State, CPU, what it waits for, command.
+    local pids
+    pids=$(descendants "$1" | paste -sd, -)
+    ps -o pid,ppid,stat,etime,pcpu,wchan:22,args -p "$pids" 2>/dev/null | cut -c1-200
+}
+
+watched() {
+    # usage: watched SECONDS LABEL command args...
+    # Runs a long external command so that it can NEVER hang silently:
+    #  - stdin is /dev/null and the command stays in this script's process group,
+    #    so it cannot be stopped for reading the terminal;
+    #  - output is shown as it arrives and kept in $INSTALL_LOG;
+    #  - a heartbeat every minute says it is alive;
+    #  - a process that was stopped anyway is resumed and reported;
+    #  - after STALL_SECONDS without output a process report is printed;
+    #  - the hard limit is enforced by timeout.
+    local limit=$1 label=$2; shift 2
+    local out pid start now printed=0 size last_growth last_beat last_report resumed rc=0
+    local stall=${STALL_SECONDS:-300}
+    out=$(mktemp "${WORK:-/tmp}/cmd.XXXXXX")
+    start=$(date +%s); last_growth=$start last_beat=$start last_report=$start
+    say "-> $label"
+    timeout --foreground -k 30 "$limit" "$@" >"$out" 2>&1 </dev/null &
+    pid=$!
+    while kill -0 "$pid" 2>/dev/null; do
+        sleep "${WATCH_INTERVAL:-2}"
+        now=$(date +%s)
+        size=$(stat -c %s "$out")
+        if ((size > printed)); then
+            tail -c +$((printed + 1)) "$out" | tee -a "$INSTALL_LOG" 2>/dev/null || true
+            printed=$size last_growth=$now
+        fi
+        resumed=$(unstick "$pid")
+        if [[ -n $resumed ]]; then
+            say "NOTE: process(es)$resumed had been stopped by the terminal; resumed. Please report this."
+        fi
+        if ((now - last_beat >= 60)); then
+            say "   ... still working on '$label' ($((now - start))s)"
+            last_beat=$now
+        fi
+        if ((now - last_growth >= stall && now - last_report >= stall)); then
+            say "   ... no output from '$label' for $((now - last_growth))s. What it is doing:"
+            process_report "$pid" | tee -a "$INSTALL_LOG" 2>/dev/null || true
+            last_report=$now
+        fi
+    done
+    wait "$pid" || rc=$?
+    size=$(stat -c %s "$out")
+    if ((size > printed)); then
+        tail -c +$((printed + 1)) "$out" | tee -a "$INSTALL_LOG" 2>/dev/null || true
+    fi
+    rm -f -- "$out"
+    if ((rc == 124 || rc == 137)); then
+        say "FAILED: '$label' did not finish within ${limit}s and was stopped."
+    elif ((rc)); then
+        say "FAILED: '$label' exited with status $rc. Full output: $INSTALL_LOG"
+    fi
+    return "$rc"
+}
+
 apt_run() {
     # usage: apt_run SECONDS apt-get-arguments...
-    # Plain `timeout` runs apt in its OWN process group. If anything then reads the
-    # terminal (needrestart, a dpkg question), the kernel silently stops apt and
-    # the installer hangs with no message. So: --foreground keeps apt in the
-    # terminal's process group, stdin is closed so a question gets the default,
-    # and needrestart is told never to ask.
     local limit=$1; shift
-    DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a NEEDRESTART_SUSPEND=1 \
-        timeout --foreground -k 30 "$limit" apt-get -o DPkg::Lock::Timeout=300 \
-        -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold \
-        "$@" </dev/null
+    watched "$limit" "apt-get $*" apt-get -o DPkg::Lock::Timeout=300 \
+        -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$@"
 }
 apt_install() { apt_run 1800 install -y "$@"; }
 preflight() {
@@ -156,7 +240,7 @@ fetch_release() {
     else
         git init -q "$WORK/source"
         git -C "$WORK/source" remote add origin https://github.com/TobbeTripitaka/telemetry_setup.git
-        timeout -k 10 300 git -C "$WORK/source" fetch --depth 1 origin "$REF"
+        timeout --foreground -k 10 300 git -C "$WORK/source" fetch --depth 1 origin "$REF"
         SHA=$(git -C "$WORK/source" rev-parse FETCH_HEAD)
         git -C "$WORK/source" checkout --detach "$SHA"
     fi
@@ -292,11 +376,14 @@ system_updates() {
     # Field boots are short and battery-powered: background apt/snap updates
     # waste Starlink data and can delay poweroff by up to 30 minutes. Update
     # once here on the bench instead, then update deliberately at maintenance.
+    if [[ $(get SYSTEM_UPGRADE yes) != yes ]]; then
+        say 'SYSTEM_UPGRADE=no: skipping the Ubuntu and snap update (only the next steps run).'
+    fi
     if [[ $(get SYSTEM_UPGRADE yes) == yes ]]; then
         apt_run 900 update
         apt_run 3600 -y upgrade --with-new-pkgs
         if command -v snap >/dev/null; then
-            timeout -k 30 1800 snap refresh ||
+            watched 1800 'snap refresh' snap refresh ||
                 say 'WARNING: snap refresh incomplete (close running apps such as Firefox and rerun later)'
         fi
         if [[ -e /var/run/reboot-required ]]; then
@@ -317,7 +404,7 @@ system_updates() {
             if systemctl cat "$timer" >/dev/null 2>&1; then systemctl disable --now "$timer"; fi
         done
         if command -v snap >/dev/null; then
-            timeout -k 10 120 snap refresh --hold ||
+            timeout --foreground -k 10 120 snap refresh --hold ||
                 say 'WARNING: snap refresh --hold failed; snaps may still update during field boots'
         fi
         say 'Automatic apt/snap updates are off. Update deliberately on the bench (see INSTALLATION.md).'
@@ -347,7 +434,7 @@ install_packages() {
         chmod 644 "$package"; apt_install "$package"
     fi
     [[ -x $BIN ]] || fail 'Native Harvester is not executable at PEGASUS_BIN'
-    timeout -k 5 30 "$BIN" version -all
+    timeout --foreground -k 5 30 "$BIN" version -all
 }
 set_computer_name() {
     [[ -n $COMPUTER_NAME ]] || return 0
@@ -443,11 +530,11 @@ install_tailscale() {
     systemctl enable --now tailscaled
     if tailscale status --json >"$WORK/tailscale-status.json" &&
        jq -e '.BackendState=="Running"' "$WORK/tailscale-status.json" >/dev/null; then
-        timeout -k 5 60 tailscale set --ssh=true
+        timeout --foreground -k 5 60 tailscale set --ssh=true
     else
         [[ -n $(get TAILSCALE_AUTH_KEY) ]] || fail 'TAILSCALE_AUTH_KEY required unless already enrolled'
         printf '%s' "$(get TAILSCALE_AUTH_KEY)" >"$WORK/tailscale.key"
-        timeout -k 10 120 tailscale up --auth-key="file:$WORK/tailscale.key" --ssh
+        timeout --foreground -k 10 120 tailscale up --auth-key="file:$WORK/tailscale.key" --ssh
         rm -f "$WORK/tailscale.key"
     fi
 }
@@ -502,7 +589,7 @@ install_release_and_config() {
     done >"$WORK/config/credentials.txt"
     if [[ -n $(get RCLONE_CONFIG_FILE) ]]; then
         # Capture selected remote privately; never print OAuth tokens.
-        RCLONE_CONFIG=$(get RCLONE_CONFIG_FILE) timeout -k 5 60 \
+        RCLONE_CONFIG=$(get RCLONE_CONFIG_FILE) timeout --foreground -k 5 60 \
             rclone --ask-password=false config show "$REMOTE" >"$WORK/config/rclone.conf"
         grep -Fxq "[$REMOTE]" "$WORK/config/rclone.conf" || fail 'Named remote not found'
     elif [[ -n $(get DROPBOX_TOKEN_JSON) ]]; then

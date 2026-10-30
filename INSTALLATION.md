@@ -3290,6 +3290,30 @@ Check the dedicated password file, parent-directory traversal, virtual-desktop
 dependencies and startup script. Verify the Mac SSH tunnel before changing
 server settings; never fix a tunnel problem by exposing VNC publicly.
 
+### The installer seems frozen
+
+Every long step of `INSTALL.sh` (package installs, updates) runs under a watchdog:
+
+- It prints a line `... still working on '<step>' (Ns)` every minute, so silence for
+  several minutes means something is wrong.
+- It cannot be stopped by the terminal. Programs run with their input closed and in
+  the installer's own process group, and `needrestart`, debconf and configuration-file
+  questions are switched off. If a program is stopped anyway it is resumed and
+  `NOTE: process(es) ... had been stopped by the terminal` is printed: please report it.
+- After 5 minutes without output it prints what the program is doing (process state,
+  CPU, what it waits for). Send that block when asking for help.
+- Everything is also written to `/var/log/tele-install.log`.
+- Each step has a hard time limit and then stops with `FAILED: ... did not finish`.
+
+Slow steps that are normal: a kernel update (building boot images with `dracut` and
+`kdump`, then the GRUB menu), `man-db` and `ufw` trigger lines (the `ufw` line is
+printed while `openssh-server` is installed), and the first large Ubuntu update. If
+the heartbeat keeps appearing and the process report shows CPU use, wait.
+
+If the installer must be stopped (Ctrl+C), then run `sudo dpkg --configure -a` and
+start `sudo bash INSTALL.sh` again; completed steps are quick the second time. An
+update can be skipped on repeat runs with `SYSTEM_UPGRADE=no` in `setup.conf`.
+
 ### Computer shuts down but Starlink or the USB relay stays on
 
 Check the selected USB port before changing the collection script. In my

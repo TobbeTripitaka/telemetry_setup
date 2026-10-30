@@ -42,7 +42,7 @@ harvest_day() {
     wait "$pid" || result=$?
     elapsed=$(( $(uptime_seconds) - started ))
     HARVEST_USED_SECONDS=$((HARVEST_USED_SECONDS + elapsed))
-    [[ $result == 0 ]] && disk_has_reserve && harvest_log_ok "$work/harvest.log" ||
+    harvester_exit_ok "$result" && disk_has_reserve && harvest_log_ok "$work/harvest.log" ||
         { log "Incomplete/failed export retained at $work"; return 1; }
     validate_paths "$work/files" || return 1
     # Freeze hashes before creating the ready marker. No log/manifest inside files/.

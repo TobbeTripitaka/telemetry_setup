@@ -24,9 +24,15 @@ detect_recorders() {
         serial=$(trim "$serial")
         valid_station "$serial" || { log "Skipping USB disk $dev: serial unusable as identity ('$serial')"; continue; }
         link=$(disk_by_id_path "$dev") || continue
-        if timeout -k 5 40 "$PEGASUS_BIN" digitizer-info "-i=$dev" -safe >/dev/null 2>&1; then
+        local probe rc=0
+        probe=$(mktemp) || continue
+        timeout -k 5 40 "$PEGASUS_BIN" digitizer-info "-i=$dev" -safe >"$probe" 2>&1 || rc=$?
+        if harvester_exit_ok "$rc" && harvester_report_ok "$probe"; then
+            rm -f "$probe"
             log "Recorder detected: serial $serial at $dev"
             printf '%s\t%s\n' "$serial" "$link"
+        else
+            rm -f "$probe"
         fi
     done < <(lsblk -dnpo NAME,TYPE,TRAN 2>/dev/null)
 }
@@ -55,8 +61,10 @@ identify_recorder() {
         printf '%s\n' "$RECORDER_SERIAL" >"$temp"
         atomic_install "$temp" "$identity_file" || return 1
     fi
+    local rc=0
     source_timeout 30 "$PEGASUS_BIN" digitizer-info "-i=$DEVICE" -safe \
-        >"$LOG_ROOT/$RUN_ID-digitizer.txt" 2>&1 || return 1
+        >"$LOG_ROOT/$RUN_ID-digitizer.txt" 2>&1 || rc=$?
+    harvester_exit_ok "$rc" && harvester_report_ok "$LOG_ROOT/$RUN_ID-digitizer.txt" || return 1
     log "Recorder identified as $RECORDER_SERIAL at $DEVICE"
 }
 
@@ -72,7 +80,7 @@ inspect_volumes() {
             [[ $id != 1 ]] || return 1
             continue
         fi
-        [[ $rc == 0 ]] && ! grep -Eq '<<<ERROR|status[ =]+FAILED' "$output" || return 1
+        harvester_exit_ok "$rc" && harvester_report_ok "$output" || return 1
         [[ $id != 3 ]] || CLOCK_PRESENT=yes
         lower=$(sed -nE 's/^[[:space:]]*lower time = ([0-9]+).*/\1/p' "$output")
         upper=$(sed -nE 's/^[[:space:]]*upper time = ([0-9]+).*/\1/p' "$output")

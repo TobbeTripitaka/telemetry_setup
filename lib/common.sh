@@ -93,6 +93,18 @@ disk_has_reserve() {
 }
 
 # All network operations are bounded. Never echo a credential-bearing command.
+# The Nanometrics command-line tool does not use 0 for success. Measured on a
+# working recorder: version, digitizer-info and volume-info exit 1; a missing
+# device or volume exits 255. So 0 and 1 mean "the command ran" and anything else
+# (255, timeout 124/137, signals) is a failure. Whether it SUCCEEDED is always
+# decided from its report text as well; the exit status alone is never enough.
+harvester_exit_ok() { (( $1 == 0 || $1 == 1 )); }
+
+harvester_report_ok() {
+    # False if the report contains a known error marker.
+    ! grep -Eq "<<<ERROR|status[ =]+(FAILED|ERROR|ABORTED)|is not a PSF library|doesn't exist" "$1"
+}
+
 source_timeout() {
     local seconds=$1 remaining
     shift

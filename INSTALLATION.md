@@ -670,6 +670,22 @@ recorders.
   `RECORDER_SERIAL` (both together) or `SOURCES_JSON`; the paths and state used by
   existing installations are then kept as they were.
 
+### Nanometrics exit statuses
+
+The native `harvester` tool does not use exit status 0 for success. Measured on a
+working recorder: `version`, `digitizer-info` and `volume-info` exit with **1**, and
+a missing device or volume exits with **255**. TELE therefore treats 0 and 1 as
+"the command ran" and everything else (255, a timeout, a signal) as failure, and
+always checks the text of the report as well: an error line such as `is not a PSF
+library`, `<<<ERROR` or `status FAILED` rejects the result whatever the exit status.
+To check a unit by hand:
+
+```bash
+# Run on: the Ubuntu station, recorder connected. Use the whole disk, not /dev/sdb1.
+B=/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
+sudo "$B" digitizer-info -i=/dev/sdb -safe; echo "exit=$?"
+```
+
 ### Local data: keep or clean
 
 `LOCAL_DATA` in `config.txt` (also changeable from the Dropbox copy) decides what

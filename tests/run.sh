@@ -389,7 +389,7 @@ test_swapped_recorder_starts_clean_and_old_pending_still_uploads() {
 }
 test_detect_recorders_probes_only_usb_non_system_disks() {
     local probe="$STATE_ROOT/probe.sh"
-    printf '%s\n' '#!/usr/bin/env bash' '[[ $1 == digitizer-info && $2 == -i=/dev/sdb ]]' >"$probe"
+    printf '%s\n' '#!/usr/bin/env bash' '[[ $1 == digitizer-info && $2 == -i=/dev/sdb ]] || exit 255' >"$probe"
     chmod +x "$probe"
     PEGASUS_BIN=$probe
     lsblk() {
@@ -399,6 +399,48 @@ test_detect_recorders_probes_only_usb_non_system_disks() {
             "-dn -o SERIAL /dev/sdb") echo SNB ;;
             "-dn -o SERIAL /dev/sdc") echo SNC ;;
             "-dn -o SERIAL /dev/sdd") echo '' ;;
+        esac
+    }
+    findmnt() { echo /dev/sda2; }
+    disk_by_id_path() { echo "/dev/disk/by-id/usb-$(basename "$1")"; }
+    [[ $(detect_recorders 2>/dev/null) == $'SNB\t/dev/disk/by-id/usb-sdb' ]]
+}
+test_real_tool_success_exit_status_one_is_accepted() {
+    # Measured on hardware: the Nanometrics tool exits 1 after a working command.
+    export MOCK_SUCCESS_EXIT=1
+    batch
+    [[ -d $SPOOL/2025-01-01 ]]
+    inspect_volumes
+}
+test_real_tool_error_exit_status_255_is_rejected() {
+    export MOCK_HARVEST_MODE=fail
+    export MOCK_SUCCESS_EXIT=1
+    expect_failure batch
+}
+test_harvester_exit_status_rules() {
+    harvester_exit_ok 0 && harvester_exit_ok 1
+    ! harvester_exit_ok 2 && ! harvester_exit_ok 124 && ! harvester_exit_ok 137 && ! harvester_exit_ok 255
+}
+test_error_text_is_never_accepted_even_with_exit_one() {
+    local f="$STATE_ROOT/report.txt"
+    printf "'/dev/sdb1' is not a PSF library or doesn't exist\nFinished in [0 days]\n" >"$f"
+    ! harvester_report_ok "$f"
+    printf 'Digitizer info:\n  serial = 123\nFinished in [0 days]\n' >"$f"
+    harvester_report_ok "$f"
+}
+test_detect_recorders_uses_real_exit_codes() {
+    local probe="$STATE_ROOT/probe2.sh"
+    printf '%s\n' '#!/usr/bin/env bash' \
+        'if [[ $2 == -i=/dev/sdb ]]; then echo "Digitizer info"; exit 1; fi' \
+        'echo "no such device"; exit 255' >"$probe"
+    chmod +x "$probe"
+    PEGASUS_BIN=$probe
+    lsblk() {
+        case "$*" in
+            "-dnpo NAME,TYPE,TRAN") printf '/dev/sda disk sata\n/dev/sdb disk usb\n/dev/sdc disk usb\n' ;;
+            "-snp -o NAME /dev/sda2") printf '/dev/sda2\n/dev/sda\n' ;;
+            "-dn -o SERIAL /dev/sdb") echo SNB ;;
+            "-dn -o SERIAL /dev/sdc") echo SNC ;;
         esac
     }
     findmnt() { echo /dev/sda2; }

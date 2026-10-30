@@ -23,8 +23,11 @@ validate_paths() {
 claim_paths() {
     # Owner records: line 1 "day:path", line 2 its Dropbox hash. The Harvester
     # can re-emit an identical out-of-range log/SOH file in every daily export;
-    # identical content is harmless. Different content under one path is not.
-    local root=$1 day=$2 sums=${3:-} file rel key owner temp hash claimed stored
+    # identical content is harmless. Different content under one path is not:
+    # for waveform data (first folder is a year) it stops the run; for logs and
+    # other non-waveform files it is recorded in the optional conflicts file
+    # (4th argument) and uploaded under a second name, never overwriting.
+    local root=$1 day=$2 sums=${3:-} conflicts=${4:-} file rel key owner temp hash claimed stored
     while IFS= read -r -d '' file; do
         rel=${file#"$root/"}
         key=$(printf '%s' "${rel,,}" | sha256sum)
@@ -40,6 +43,11 @@ claim_paths() {
             if [[ $claimed != "$day:$rel" ]]; then
                 if [[ -n $hash && $stored == "$hash" ]]; then
                     log "Identical file re-exported in $day, already claimed by ${claimed%%:*}: $rel"
+                    continue
+                fi
+                if [[ -n $conflicts && -n $hash && $rel != [0-9][0-9][0-9][0-9]/* ]]; then
+                    log "WARNING: $rel differs from the copy already uploaded for ${claimed%%:*}; keeping both"
+                    printf '%s\n' "$rel" >>"$conflicts" || return 1
                     continue
                 fi
                 die "Native path reused across days/case variants with different content: $rel. Hardware output layout needs review."
@@ -76,17 +84,53 @@ validate_batch() {
     [[ $count == "$expected" ]]
 }
 
+prepare_conflict_upload() {
+    # Writes an rclone exclude list for the main copy and a Dropbox-hash list
+    # for verification in which each conflicting file carries its second name.
+    local batch=$1 day=$2 conflicts=$3 verify=$4 rel
+    local exclude=$batch/upload-exclude.txt sums=$batch/dropbox.sum
+    : >"$exclude" || return 1
+    while IFS= read -r rel; do
+        # rclone patterns: escape glob characters; the leading slash anchors.
+        # shellcheck disable=SC2001  # bracket-class escaping is clearer with sed
+        printf '/%s\n' "$(sed 's/[][*?{}]/\\&/g' <<<"$rel")" >>"$exclude" || return 1
+    done <"$conflicts"
+    awk 'NR == FNR {skip[$0]; next} !(substr($0, 67) in skip)' "$conflicts" "$sums" >"$verify" || return 1
+    while IFS= read -r rel; do
+        awk -v p="$rel" -v d="$day" 'length($0) > 66 && substr($0, 67) == p {print substr($0, 1, 66) p ".conflict-" d; exit}' \
+            "$sums" >>"$verify" || return 1
+    done <"$conflicts"
+}
+
 upload_batch() {
-    local batch=$1 day force temp
+    local batch=$1 day force temp rel verify
+    local conflicts=$batch/conflicts.txt
     validate_batch "$batch" || { die "Pending batch integrity check failed: $batch"; return 1; }
     day=$(jq -r .day "$batch/meta.json")
     force=$(jq -r .force "$batch/meta.json")
-    claim_paths "$batch/files" "$day" "$batch/dropbox.sum" || return 1
-    local -a flags=(--checksum)
+    : >"$conflicts" || return 1
+    claim_paths "$batch/files" "$day" "$batch/dropbox.sum" "$conflicts" || return 1
+    local -a flags=(--checksum) exclude=()
     [[ $force != yes ]] || flags=(--ignore-times)
+    verify=$batch/dropbox.sum
+    if [[ -s $conflicts ]]; then
+        verify=$batch/upload-verify.sum
+        prepare_conflict_upload "$batch" "$day" "$conflicts" "$verify" || return 1
+        exclude=(--exclude-from "$batch/upload-exclude.txt")
+    fi
     log "Uploading/verifying $day force=$force"
-    cloud copy "$batch/files" "$REMOTE_DATA" --no-traverse "${flags[@]}" >>"$LOG_FILE" 2>&1 || return 1
-    cloud check "$batch/dropbox.sum" "$REMOTE_DATA" --checkfile Dropbox --one-way \
+    cloud copy "$batch/files" "$REMOTE_DATA" --no-traverse "${flags[@]}" "${exclude[@]}" \
+        >>"$LOG_FILE" 2>&1 || return 1
+    if [[ -s $conflicts ]]; then
+        while IFS= read -r rel; do
+            log "Uploading second version as $rel.conflict-$day"
+            cloud copyto "$batch/files/$rel" "$REMOTE_DATA/$rel.conflict-$day" "${flags[@]}" \
+                >>"$LOG_FILE" 2>&1 || return 1
+        done <"$conflicts"
+        cloud copyto "$conflicts" "$REMOTE_BASE/tele_logfiles/receipts/$RECORDER_SERIAL/$day.conflicts.txt" \
+            --checksum >>"$LOG_FILE" 2>&1 || return 1
+    fi
+    cloud check "$verify" "$REMOTE_DATA" --checkfile Dropbox --one-way \
         >>"$LOG_FILE" 2>&1 || return 1
     # An acknowledgment belongs to the destination actually verified, not just a day.
     jq --arg destination "$REMOTE_DATA" '.destination=$destination' \

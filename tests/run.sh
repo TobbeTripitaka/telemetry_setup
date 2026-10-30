@@ -275,6 +275,28 @@ test_changed_reexport_across_days_stops() {
     claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum"
     expect_failure claim_paths "$STATE_ROOT/b" 2025-01-02 "$STATE_ROOT/b.sum"
 }
+test_changed_log_across_days_kept_under_second_name() {
+    local log=logs/2025/XX/TEST/LOG.D/XX.TEST..LOG.D.2025.001.txt
+    MOCK_LOG_CONTENT=first harvest_day 1735689600 1735776000 incremental none 5
+    upload_batch "$SPOOL/2025-01-01"
+    MOCK_LOG_CONTENT=second harvest_day 1735776000 1735862400 incremental none 5
+    upload_batch "$SPOOL/2025-01-02"
+    [[ $(<"$REMOTE_DATA/$log") == first ]]
+    [[ $(<"$REMOTE_DATA/$log.conflict-2025-01-02") == second ]]
+    [[ -f $REMOTE_DATA/2025/XX/TEST/BHZ.D/2025-01-02.mseed ]]
+    [[ -f $VERIFIED/2025-01-02.json ]]
+    # A rerun of the same conflict is harmless.
+    MOCK_LOG_CONTENT=second harvest_day 1735776000 1735862400 incremental none 5 || true
+}
+test_changed_waveform_across_days_still_stops() {
+    mkdir -p "$STATE_ROOT/a/2025/XX" "$STATE_ROOT/b/2025/XX"
+    printf one >"$STATE_ROOT/a/2025/XX/f.mseed"
+    printf two >"$STATE_ROOT/b/2025/XX/f.mseed"
+    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
+    cloud hashsum Dropbox "$STATE_ROOT/b" --output-file "$STATE_ROOT/b.sum"
+    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum" "$STATE_ROOT/c.txt"
+    expect_failure claim_paths "$STATE_ROOT/b" 2025-01-02 "$STATE_ROOT/b.sum" "$STATE_ROOT/c.txt"
+}
 test_open_day_update_rewrites_claim() {
     mkdir "$STATE_ROOT/a"
     printf one >"$STATE_ROOT/a/day.mseed"

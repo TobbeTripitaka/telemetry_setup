@@ -26,6 +26,10 @@ if [[ $mode == hang ]]; then sleep 30; exit 0; fi
 day=$(date -u -d "@$((lower / 1000000000))" +%F)
 mkdir -p "$out/2025/XX/TEST/BHZ.D"
 printf 'synthetic waveform %s\n' "$day" >"$out/2025/XX/TEST/BHZ.D/$day.mseed"
+if [[ -n ${MOCK_LOG_CONTENT:-} ]]; then
+    mkdir -p "$out/logs/2025/XX/TEST/LOG.D"
+    printf '%s\n' "$MOCK_LOG_CONTENT" >"$out/logs/2025/XX/TEST/LOG.D/XX.TEST..LOG.D.2025.001.txt"
+fi
 if [[ $mode == fail ]]; then printf '<<<ERROR synthetic read failure\n'; exit 255; fi
 for op in harvest-logs harvest-soh harvest-data; do
     printf "Operation '%s' finished with status COMPLETED(0)\n" "$op"

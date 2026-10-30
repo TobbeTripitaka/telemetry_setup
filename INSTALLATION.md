@@ -1397,10 +1397,18 @@ Export two adjacent full days separately and together, then compare file lists
 and sample coverage. Test midnight boundaries, records that straddle midnight,
 time correction, the latest partial day and missing-data intervals.
 
-The script rejects a native filename reused by different daily batches rather
-than overwriting a potentially fuller earlier file. If SOH/log naming causes
-this guard to trigger, stop and resolve the output contract; do not remove the
-guard just to make an upload proceed.
+The script never overwrites a file in Dropbox with different content. An
+identical file that the Harvester exports again on a later day is skipped.
+
+Real hardware showed that the Harvester writes a short fragment of an earlier
+day's log file (for example `Z9.0496..LOG.D.2023.344.txt`, 111 bytes against
+34063 bytes) into the next day's export. A log or other non-waveform file with
+different content is therefore uploaded under a second name,
+`<native name>.conflict-<day>`, the run logs a warning, and the list is saved
+as `tele_logfiles/receipts/<serial>/<day>.conflicts.txt`. Waveform files (the
+first folder is a year) still stop the run when a path is reused with
+different content: that would mean the output layout needs review, so do not
+remove the guard just to make an upload proceed.
 
 Partial-hour bench files must not be copied over canonical full-day files in
 production Dropbox. Keep all experiments in a separate local directory and,

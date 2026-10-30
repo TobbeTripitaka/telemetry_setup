@@ -308,6 +308,17 @@ test_upgrade_off_says_so() {
     local text; text=$(system_updates)
     [[ $text == *"SYSTEM_UPGRADE=no: skipping"* ]]
 }
+test_harvester_version_check_ignores_exit_status() {
+    source "$ROOT/INSTALL.sh"
+    local fake="$BASE/fake-version.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'echo "Versions:"' 'echo "    Harvester CL - v1.3.91 (Nanometrics)"' 'echo "Finished in [0 days 0 hrs 0 mins 0 secs]"' 'exit 1' >"$fake"
+    chmod +x "$fake"
+    BIN=$fake
+    check_harvester_version >/dev/null
+    printf '%s\n' '#!/usr/bin/env bash' 'echo "something else"' 'exit 0' >"$fake"
+    set +e; (set -e; check_harvester_version) >/dev/null 2>&1; local rc=$?; set -e
+    [[ $rc != 0 ]]
+}
 test_stage_failure_stops_before_activation() {
     # A fresh strict shell is essential: an if-function context masks errexit.
     set +e

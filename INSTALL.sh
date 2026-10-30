@@ -434,7 +434,16 @@ install_packages() {
         chmod 644 "$package"; apt_install "$package"
     fi
     [[ -x $BIN ]] || fail 'Native Harvester is not executable at PEGASUS_BIN'
-    timeout --foreground -k 5 30 "$BIN" version -all
+    check_harvester_version
+}
+check_harvester_version() {
+    # The Nanometrics CLI can print everything correctly and still exit with
+    # status 1, so judge this by what it reports, not by its exit status.
+    local report
+    report=$(timeout --foreground -k 5 30 "$BIN" version -all 2>&1 </dev/null) || true
+    say "$report"
+    [[ $report == *'Harvester CL - v'* ]] ||
+        fail "The native Harvester did not report a version; run: $BIN version -all"
 }
 set_computer_name() {
     [[ -n $COMPUTER_NAME ]] || return 0

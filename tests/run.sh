@@ -285,8 +285,18 @@ test_changed_log_across_days_kept_under_second_name() {
     [[ $(<"$REMOTE_DATA/$log.conflict-2025-01-02") == second ]]
     [[ -f $REMOTE_DATA/2025/XX/TEST/BHZ.D/2025-01-02.mseed ]]
     [[ -f $VERIFIED/2025-01-02.json ]]
-    # A rerun of the same conflict is harmless.
-    MOCK_LOG_CONTENT=second harvest_day 1735776000 1735862400 incremental none 5 || true
+    # The same second version on later days is not uploaded again, and a day
+    # with nothing new needs no Dropbox traffic at all.
+    : >"$STATE_ROOT/cloud-calls"
+    MOCK_NO_WAVEFORM=1 MOCK_LOG_CONTENT=second harvest_day 1735862400 1735948800 incremental none 5
+    upload_batch "$SPOOL/2025-01-03"
+    [[ ! -e $REMOTE_DATA/$log.conflict-2025-01-03 ]]
+    [[ -f $VERIFIED/2025-01-03.json ]]
+    ! grep -q -E '^(copy|copyto) ' "$STATE_ROOT/cloud-calls"
+    # A third, different version is still kept.
+    MOCK_NO_WAVEFORM=1 MOCK_LOG_CONTENT=third harvest_day 1735948800 1736035200 incremental none 5
+    upload_batch "$SPOOL/2025-01-04"
+    [[ $(<"$REMOTE_DATA/$log.conflict-2025-01-04") == third ]]
 }
 test_changed_waveform_across_days_still_stops() {
     mkdir -p "$STATE_ROOT/a/2025/XX" "$STATE_ROOT/b/2025/XX"

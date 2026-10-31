@@ -1405,7 +1405,10 @@ day's log file (for example `Z9.0496..LOG.D.2023.344.txt`, 111 bytes against
 34063 bytes) into the next day's export. A log or other non-waveform file with
 different content is therefore uploaded under a second name,
 `<native name>.conflict-<day>`, the run logs a warning, and the list is saved
-as `tele_logfiles/receipts/<serial>/<day>.conflicts.txt`. Waveform files (the
+as `tele_logfiles/receipts/<serial>/<day>.conflicts.txt`. The Harvester
+repeats the same fragment in every later daily export; a second version that
+is identical to one already uploaded is not uploaded again, and a day with
+nothing new is acknowledged locally without any Dropbox traffic. Waveform files (the
 first folder is a year) still stop the run when a path is reused with
 different content: that would mean the output layout needs review, so do not
 remove the guard just to make an upload proceed.

@@ -74,6 +74,7 @@ test_updates_disable_background_updates() {
     timeout() { while [[ $1 == -* || $1 =~ ^[0-9]+$ ]]; do shift; done; "$@"; }
     system_updates
     grep -q 'upgrade --with-new-pkgs' "$calls" &&
+    grep -q 'autoremove --purge' "$calls" &&
     grep -q 'snap refresh --hold' "$calls" &&
     grep -q 'disable --now apt-daily.timer' "$calls" &&
     grep -q 'disable --now apt-daily-upgrade.timer' "$calls" &&
@@ -314,6 +315,16 @@ test_upgrade_off_says_so() {
     declare -gA SETUP=([SYSTEM_UPGRADE]=no [DISABLE_AUTO_UPDATES]=no)
     local text; text=$(system_updates)
     [[ $text == *"SYSTEM_UPGRADE=no: skipping"* ]]
+}
+test_autoremove_failure_does_not_stop_installation() {
+    source "$ROOT/INSTALL.sh"
+    WORK="$BASE/ar-work"; mkdir -p "$WORK"
+    APT_NO_AUTO_CONF="$BASE/99tele-off2"
+    declare -gA SETUP=([SYSTEM_UPGRADE]=yes [DISABLE_AUTO_UPDATES]=no)
+    apt_run() { [[ $* != *autoremove* ]]; }
+    watched() { :; }
+    local text; text=$(system_updates)
+    [[ $text == *"apt autoremove did not finish"* ]]
 }
 test_harvester_version_check_ignores_exit_status() {
     source "$ROOT/INSTALL.sh"

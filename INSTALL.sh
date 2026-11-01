@@ -400,6 +400,10 @@ system_updates() {
     if [[ $(get SYSTEM_UPGRADE yes) == yes ]]; then
         apt_run 900 update
         apt_run 3600 -y upgrade --with-new-pkgs
+        # Drop packages nothing needs any more (old kernels, headers). Tidiness
+        # only, so a failure here is reported but never stops the installation.
+        apt_run 1800 -y autoremove --purge ||
+            say 'WARNING: apt autoremove did not finish; run it later: sudo apt autoremove --purge'
         if command -v snap >/dev/null; then
             watched 1800 'snap refresh' snap refresh ||
                 say 'WARNING: snap refresh incomplete (close running apps such as Firefox and rerun later)'
@@ -411,7 +415,7 @@ system_updates() {
     if [[ $(get DISABLE_AUTO_UPDATES yes) == yes ]]; then
         printf '%s\n' \
             '// TELE field station: no background package updates during short battery boots.' \
-            '// Update on the bench: sudo apt update && sudo apt upgrade && sudo snap refresh' \
+            '// Update on the bench: sudo apt update && sudo apt upgrade && sudo apt autoremove --purge && sudo snap refresh' \
             'APT::Periodic::Update-Package-Lists "0";' \
             'APT::Periodic::Download-Upgradeable-Packages "0";' \
             'APT::Periodic::AutocleanInterval "0";' \

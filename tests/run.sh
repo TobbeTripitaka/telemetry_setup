@@ -307,6 +307,17 @@ test_changed_waveform_across_days_still_stops() {
     claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum" "$STATE_ROOT/c.txt"
     expect_failure claim_paths "$STATE_ROOT/b" 2025-01-02 "$STATE_ROOT/b.sum" "$STATE_ROOT/c.txt"
 }
+test_email_retries_and_reports_the_reason() {
+    mkdir -p "$BASE/fakebin"
+    printf '#!/usr/bin/env bash\necho x >>"%s/curl-calls"\necho "curl: (67) Login denied" >&2\nexit 67\n' "$BASE" >"$BASE/fakebin/curl"
+    chmod +x "$BASE/fakebin/curl"
+    EMAIL_TO=a@example.com EMAIL_FROM=b@example.com EMAIL_PASSWORD=secretsecret1234 EMAIL_RETRY_SECONDS=0
+    HARVEST_MODE=incremental EXECUTE=auto MAINTENANCE_IDLE_SECONDS=600
+    PATH="$BASE/fakebin:$PATH" expect_failure send_notification TEST
+    [[ $(wc -l <"$BASE/curl-calls") == 3 ]]
+    [[ $EMAIL_ERROR == *'curl status 67'*'Login denied'* ]]
+    ! grep -q secretsecret1234 "$LOG_FILE"
+}
 test_open_day_update_rewrites_claim() {
     mkdir "$STATE_ROOT/a"
     printf one >"$STATE_ROOT/a/day.mseed"

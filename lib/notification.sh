@@ -70,10 +70,20 @@ send_notification() {
         else printf 'Bench/check helper: no poweroff is requested by this script.\n\n'; fi
         tail -n 100 "$LOG_FILE"
     } >"$mail"
-    local rc=0
-    timeout -k 5 60 curl --config "$auth" --silent --show-error --ssl-reqd \
-        --url smtps://smtp.gmail.com:465 --mail-from "$EMAIL_FROM" --mail-rcpt "$EMAIL_TO" \
-        --connect-timeout 15 --max-time 50 --upload-file "$mail" >>"$LOG_FILE" 2>&1 || rc=$?
+    # Starlink may have only just come up: try three times before giving up, and
+    # keep the reason (EMAIL_ERROR) so the installer and the log can show it.
+    local rc=0 attempt err="$dir/curl.err"
+    EMAIL_ERROR=''
+    for attempt in 1 2 3; do
+        rc=0
+        timeout -k 5 60 curl --config "$auth" --silent --show-error --ssl-reqd \
+            --url smtps://smtp.gmail.com:465 --mail-from "$EMAIL_FROM" --mail-rcpt "$EMAIL_TO" \
+            --connect-timeout 15 --max-time 50 --upload-file "$mail" >>"$LOG_FILE" 2>"$err" || rc=$?
+        [[ $rc != 0 ]] || break
+        EMAIL_ERROR="curl status $rc: $(tail -n 1 "$err")"
+        log "Email attempt $attempt of 3 failed: $EMAIL_ERROR"
+        ((attempt == 3)) || sleep "${EMAIL_RETRY_SECONDS:-10}"
+    done
     rm -rf -- "$dir"
     [[ $rc == 0 ]]
 }

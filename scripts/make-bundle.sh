@@ -123,7 +123,9 @@ This folder holds PASSWORDS (setup.conf). Do not email, upload or share it.
 
        sudo /opt/tele/current/tele.sh --check
 
-   and send the output to the project lead.
+   and send the output to the project lead. The installer also left a short
+   report, INSTALL-REPORT.txt, in this folder (and /var/log/tele-install-report.txt):
+   send it to the project lead as well. It says whether everything succeeded.
 6. BIOS wake-up and the USB relay port are set on the computer itself; follow
    INSTALLATION.md in this folder ("Configure BIOS wake-up and shutdown behaviour"
    and "Choose and test the USB relay-control port").

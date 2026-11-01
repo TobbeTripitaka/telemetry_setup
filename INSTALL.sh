@@ -33,9 +33,69 @@ GDM_DIR=/etc/gdm3 LIGHTDM_DIR=/etc/lightdm DCONF_DIR=/etc/dconf HOSTS_FILE=/etc/
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MODE=confirm MODE_SET=no CONFIG='' CONFIG_DIR='' PRIVATE_CONF='' BUNDLE=no
 REF=main SOURCE_DIR='' ENABLE_FIELD=no WORK='' CURRENT_STAGE=arguments
+REPORT_NOTES='' REPORT_FILE=/var/log/tele-install-report.txt INSTALL_STARTED=''
+RENAME_FROM='' RENAME_FROM_USER=''
+note() {
+    # usage: note OK|WARN|TODO text. Collected for the closing report; works from subshells.
+    [[ -n $REPORT_NOTES ]] || return 0
+    { printf '%s %s\n' "$1" "${*:2}" >>"$REPORT_NOTES"; } 2>/dev/null || true
+}
+write_report() {
+    # A short, plain-text summary the technician can read or send back.
+    local rc=$1 result warns=0 line text
+    [[ -n $REPORT_NOTES ]] || return 0
+    warns=$(grep -c '^WARN ' "$REPORT_NOTES" 2>/dev/null || true)
+    if ((rc)); then result="FAILED at '$CURRENT_STAGE' (status $rc)"
+    elif ((warns)); then result="SUCCESS with $warns warning(s)"
+    else result=SUCCESS; fi
+    {
+        printf 'TELE installation report\n========================\n'
+        printf 'Result:     %s\n' "$result"
+        printf 'Finished:   %s UTC (started %s UTC)\n' "$(date -u '+%F %H:%M')" "$INSTALL_STARTED"
+        printf 'Station:    %s\n' "$(get station)"
+        printf 'Computer:   %s    Account: %s\n' "$(hostname 2>/dev/null || echo unknown)" "${USER_NAME:-unknown}"
+        printf 'Revision:   %s\n' "${SHA:-unknown}"
+        if [[ -e /etc/tele/FIELD_ENABLED ]]; then printf 'Field mode: ENABLED for the next boot (computer powers off after each run)\n'
+        else printf 'Field mode: off (bench mode; the computer stays on)\n'; fi
+        printf '\nChecks\n'
+        { grep -E '^(OK|WARN) ' "$REPORT_NOTES" || true; } | while IFS= read -r line; do
+            case $line in OK\ *) printf '  OK    %s\n' "${line#OK }" ;; *) printf '  WARN  %s\n' "${line#WARN }" ;; esac
+        done
+        if ((rc)); then printf '  FAIL  Stopped at: %s. Fix it and rerun; finished stages are skipped.\n' "$CURRENT_STAGE"; fi
+        printf '\nTo do\n'
+        { grep -E '^TODO ' "$REPORT_NOTES" || true; } | while IFS= read -r line; do printf '  - %s\n' "${line#TODO }"; done
+        if ((rc == 0)); then
+            [[ ! -e /var/run/reboot-required ]] || printf '  - Ubuntu asks for a reboot.\n'
+            printf '  - Reboot, check that it logs in by itself, then run: sudo /opt/tele/current/tele.sh --check\n'
+        fi
+    } >"$REPORT_FILE.new" 2>/dev/null || return 0
+    mv -f -- "$REPORT_FILE.new" "$REPORT_FILE" 2>/dev/null || return 0
+    chmod 644 "$REPORT_FILE" 2>/dev/null || true
+    if [[ $BUNDLE == yes && -d $CONFIG_DIR ]]; then
+        cp -- "$REPORT_FILE" "$CONFIG_DIR/INSTALL-REPORT.txt" 2>/dev/null || true
+        chown --reference="$CONFIG_DIR" "$CONFIG_DIR/INSTALL-REPORT.txt" 2>/dev/null || true
+    fi
+    text=$(<"$REPORT_FILE")
+    printf '\n%s\n\nSaved as %s\n' "$text" "$REPORT_FILE"
+}
+upload_report() {
+    # Best effort, never changes the installation result.
+    [[ -x /opt/tele/current/tele.sh && -f /etc/tele/credentials.txt && -f $REPORT_FILE ]] || return 0
+    (
+        source /opt/tele/current/tele.sh
+        load_node_config /etc/tele/node.conf
+        load_local_config /etc/tele/config.txt
+        init_workspace
+        load_credentials /etc/tele/credentials.txt
+        cloud copyto "$REPORT_FILE" "$REMOTE_BASE/tele_logfiles/installation/$RUN_ID-report.txt"
+    ) >/dev/null 2>&1 || true
+}
 cleanup() {
     local rc=$?
     trap - EXIT
+    set +e
+    write_report "$rc"
+    [[ -z $REPORT_NOTES ]] || { upload_report; rm -f -- "$REPORT_NOTES"; }
     [[ -z $WORK ]] || rm -rf -- "$WORK"
     [[ -z $PRIVATE_CONF ]] || rm -f -- "$PRIVATE_CONF"
     if ((rc)); then
@@ -81,7 +141,7 @@ parse_setup() {
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
           OPERATOR_USER|TAILSCALE_AUTH_KEY|ENABLE_VNC|VNC_PASSWORD|\
           STARLINK_ADDRESS|STARLINK_SNOW_MELT|EMERGENCY_SECONDS|DISABLE_SLEEP|\
-          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|\
+          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|\
           EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|NETWORK_WAIT_SECONDS|\
           UPLOAD_TEST|EMAIL_TEST) ;;
           *) fail "Unknown setup key: $key" ;;
@@ -278,6 +338,13 @@ validate_setup() {
     COMPUTER_NAME=$(get COMPUTER_NAME)
     [[ -z $COMPUTER_NAME || $COMPUTER_NAME =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
         fail 'COMPUTER_NAME: lowercase letters, digits and hyphens only (for example tele9)'
+    RENAME_FROM=$(get RENAME_FROM)
+    [[ -z $RENAME_FROM ]] || valid_station "$RENAME_FROM" || fail 'RENAME_FROM is not a valid station name'
+    RENAME_FROM_USER=$(get RENAME_FROM_USER "$RENAME_FROM")
+    [[ -z $RENAME_FROM_USER || $RENAME_FROM_USER =~ ^[a-z_][a-z0-9_-]{0,30}$ ]] ||
+        fail 'RENAME_FROM_USER is not a valid account name'
+    [[ -z $RENAME_FROM || $RENAME_FROM != "$(get station)" ]] ||
+        fail 'RENAME_FROM is the same as the station name; remove it from the setup file'
     OPERATOR_PASSWORD=$(get OPERATOR_PASSWORD)
     [[ -z $OPERATOR_PASSWORD || $OPERATOR_PASSWORD =~ ^[^[:space:]:]{6,64}$ ]] ||
         fail 'OPERATOR_PASSWORD: 6-64 visible characters, no spaces and no colon'
@@ -476,6 +543,7 @@ set_computer_name() {
         printf '127.0.1.1 %s\n' "$COMPUTER_NAME" >>"$HOSTS_FILE"
     fi
     say "Computer name: $COMPUTER_NAME"
+    note OK "Computer name set to $COMPUTER_NAME"
 }
 set_operator_account() {
     if ! id "$USER_NAME" >/dev/null 2>&1; then
@@ -485,12 +553,23 @@ set_operator_account() {
         fail 'VNC unit requires operator home /home/OPERATOR_USER'
     if [[ -n $OPERATOR_PASSWORD ]]; then
         # printf is a shell builtin, so the password never appears in a process list.
-        printf '%s:%s\n' "$USER_NAME" "$OPERATOR_PASSWORD" | chpasswd
+        # A password-quality complaint (for example "contains the user name") is a
+        # warning only: root may set any password, and the password is set.
+        printf '%s:%s\n' "$USER_NAME" "$OPERATOR_PASSWORD" | chpasswd 2>"$WORK/chpasswd.err" ||
+            { cat "$WORK/chpasswd.err" >&2; fail "Could not set the password for $USER_NAME"; }
+        if grep -q 'BAD PASSWORD' "$WORK/chpasswd.err" 2>/dev/null; then
+            say 'Note: Ubuntu rates this password as weak, but it was set as requested.'
+            note WARN "Password for $USER_NAME is set, but Ubuntu rates it as weak (consider a stronger one)"
+        else
+            cat "$WORK/chpasswd.err" >&2
+        fi
+        note OK "Password for account $USER_NAME was changed"
     fi
     # Maintenance by SSH/VNC needs sudo with the account's own password. The TELE
     # services themselves run as root under systemd and never use sudo.
     usermod -aG sudo "$USER_NAME"
     say "Account '$USER_NAME' is ready."
+    note OK "Account $USER_NAME is ready (member of the sudo group)"
 }
 set_autologin() {
     [[ $(get AUTOLOGIN yes) == yes ]] || return 0
@@ -531,8 +610,10 @@ set_autologin() {
     chown "$USER_NAME:$(id -gn "$USER_NAME")" "$HOME_BASE/$USER_NAME/.config/gnome-initial-setup-done"
     if [[ $touched == yes ]]; then
         say "Automatic login for '$USER_NAME' and no lock screen take effect at the next boot."
+        note OK "Automatic login for $USER_NAME and no lock screen (active from the next boot, no password asked)"
     else
         say 'WARNING: no GDM or LightDM found (server install?). Automatic login was not configured.'
+        note WARN 'No GDM or LightDM found: automatic login was not configured'
     fi
 }
 linux_settings() {
@@ -552,6 +633,7 @@ linux_settings() {
     # Do not change firewalls, sudo policy, network routes or BIOS.
 }
 install_tailscale() {
+    local ts_ip
     download "https://pkgs.tailscale.com/stable/ubuntu/$CODENAME.noarmor.gpg" "$WORK/tailscale.gpg"
     download "https://pkgs.tailscale.com/stable/ubuntu/$CODENAME.tailscale-keyring.list" "$WORK/tailscale.list"
     install -m 644 "$WORK/tailscale.gpg" /usr/share/keyrings/tailscale-archive-keyring.gpg
@@ -562,12 +644,19 @@ install_tailscale() {
     if tailscale status --json >"$WORK/tailscale-status.json" &&
        jq -e '.BackendState=="Running"' "$WORK/tailscale-status.json" >/dev/null; then
         timeout --foreground -k 5 60 tailscale set --ssh=true
+        if [[ -n $RENAME_FROM && -n $COMPUTER_NAME ]]; then
+            timeout --foreground -k 5 60 tailscale set --hostname="$COMPUTER_NAME" ||
+                note WARN "Tailscale name was not changed to $COMPUTER_NAME; rename it in the Tailscale admin console"
+        fi
     else
         [[ -n $(get TAILSCALE_AUTH_KEY) ]] || fail 'TAILSCALE_AUTH_KEY required unless already enrolled'
         printf '%s' "$(get TAILSCALE_AUTH_KEY)" >"$WORK/tailscale.key"
         timeout --foreground -k 10 120 tailscale up --auth-key="file:$WORK/tailscale.key" --ssh
         rm -f "$WORK/tailscale.key"
     fi
+    ts_ip=$(timeout 20 tailscale ip -4 2>/dev/null | head -n1 || true)
+    if [[ -n $ts_ip ]]; then note OK "Tailscale is online as $(hostname) ($ts_ip), SSH enabled"
+    else note WARN 'Tailscale is installed but shows no address yet'; fi
 }
 install_release_and_config() {
     local version release key file
@@ -687,10 +776,81 @@ install_services() {
     systemd-analyze verify "${files[@]}"
     # No --now: boot activation is a separate, last stage.
 }
+rename_station_data() {
+    # Moves what the earlier station name ($1) accumulated to the current one:
+    # local state (so nothing is uploaded twice) and the Dropbox folder (a
+    # server-side move). Safe to rerun: finished parts are simply skipped.
+    local old=$1 new=$STATION_NAME old_state old_remote listing count rc=0 ack tmp
+    old_state=${STATE_ROOT%/"$new"}/$old
+    old_remote=${REMOTE_BASE%/"$new"}/$old
+    say "Renaming station data: $old -> $new"
+    if [[ -d $old_state ]]; then
+        if find "$STATE_ROOT" -mindepth 1 ! -type d -print -quit | grep -q .; then
+            fail "Both $old_state and $STATE_ROOT hold data. Move one of them away and rerun."
+        fi
+        find "$STATE_ROOT" -depth -type d -empty -delete
+        mv -T -- "$old_state" "$STATE_ROOT"
+        # Acknowledgments name the Dropbox folder they were verified in.
+        while IFS= read -r -d '' ack; do
+            tmp=$(mktemp "$(dirname -- "$ack")/.rename.XXXXXX")
+            jq --arg o "$old" --arg n "$new" \
+                'if .destination then .destination |= (split("/tele/" + $o + "/") | join("/tele/" + $n + "/")) else . end' \
+                "$ack" >"$tmp"
+            mv -f -- "$tmp" "$ack"
+        done < <(find "$STATE_ROOT" -path '*/verified/*.json' -print0)
+        mkdir -p -- "$STATE_ROOT/pending" "$STATE_ROOT/verified" "$STATE_ROOT/owners" "$STATE_ROOT/kept"
+        if [[ -d /var/log/tele/$old && ! -e /var/log/tele/$new/.moved ]]; then
+            mkdir -p -- "/var/log/tele/$new"
+            cp -a -- "/var/log/tele/$old/." "/var/log/tele/$new/" && : >"/var/log/tele/$new/.moved"
+        fi
+        say "Local state moved from $old_state"
+        note OK "Local state of station $old moved to $new (nothing will be uploaded twice)"
+    else
+        say "No local state for station $old; nothing to move."
+    fi
+    listing=$(cloud lsf "$old_remote" -R --files-only) || rc=$?
+    case $rc in
+        0) ;;
+        3) listing='' ;;
+        *) fail "Cannot read the Dropbox folder $old_remote (rclone status $rc). Check the network and rerun." ;;
+    esac
+    # The remote config.txt names its station, so each station keeps its own.
+    listing=$(grep -vx 'config.txt' <<<"$listing" || true)
+    if [[ -n $listing ]]; then
+        count=$(grep -c . <<<"$listing")
+        say "Moving $count file(s) in Dropbox: $old_remote -> $REMOTE_BASE (this can take a while)"
+        watched 7200 'rename Dropbox folder' rclone move "$old_remote" "$REMOTE_BASE" \
+            --ignore-existing --exclude /config.txt --delete-empty-src-dirs \
+            --dropbox-batch-mode sync --contimeout 15s --timeout 120s \
+            --retries 3 --low-level-retries 5 --transfers 4 --checkers 4
+        note OK "Dropbox folder moved: $count file(s) from tele/$old to tele/$new"
+    else
+        say 'No data in the old Dropbox folder; nothing to move.'
+    fi
+    if [[ -n $RENAME_FROM_USER && $RENAME_FROM_USER != "$USER_NAME" ]] && id "$RENAME_FROM_USER" >/dev/null 2>&1; then
+        note TODO "The old account '$RENAME_FROM_USER' still exists. After the reboot, logged in as $USER_NAME, remove it: sudo deluser --remove-home $RENAME_FROM_USER"
+    fi
+    note TODO "The old Tailscale entry '$old' may remain; remove it in the Tailscale admin console if it shows offline"
+}
+rename_station() {
+    (
+        source /opt/tele/current/tele.sh
+        load_node_config /etc/tele/node.conf
+        load_local_config /etc/tele/config.txt
+        init_workspace
+        load_credentials /etc/tele/credentials.txt
+        check_dependencies
+        rename_station_data "$RENAME_FROM"
+    )
+}
 check_connections() {
     # Release lock only for the preflight entrypoint, then reacquire.
     flock -u 9
-    /opt/tele/current/tele.sh --check
+    /opt/tele/current/tele.sh --check 2>&1 | tee "$WORK/check.out"
+    local recorder
+    recorder=$(grep -m1 -o 'Recorder detected: serial [^ ]* at [^ ]*' "$WORK/check.out" || true)
+    if [[ -n $recorder ]]; then note OK "${recorder/detected: /detected, }"
+    else note WARN 'No recorder was found by the check (connect it and run: sudo /opt/tele/current/tele.sh --check)'; fi
     flock -n 9 || fail 'Another TELE run started during checks'
     (
         source /opt/tele/current/tele.sh
@@ -717,10 +877,16 @@ check_connections() {
             cloud copyto "$local_probe" "$WORK/probe-return.txt"
             cmp "$WORK/probe.txt" "$WORK/probe-return.txt"
             say 'Small upload/download verification passed; probe retained with station logs.'
+            note OK 'Dropbox upload and download test passed'
         fi
         if [[ $(get EMAIL_TEST yes) == yes ]]; then
             RUN_MODE=check
-            send_notification INSTALLATION_CHECK || fail 'Test email failed'
+            if send_notification INSTALLATION_CHECK; then
+                note OK "Test email sent to $EMAIL_TO"
+            else
+                note WARN "Test email failed: ${EMAIL_ERROR:-unknown reason}"
+                fail "Test email failed: ${EMAIL_ERROR:-unknown reason}. Check the Gmail app password (EMAIL_PASSWORD) and that Starlink is online."
+            fi
         fi
     )
 }
@@ -771,6 +937,7 @@ main() {
         say '5. Install/enroll Tailscale with SSH enabled.'
         say '6. Back up private settings, deploy release, write configuration/profiles.'
         say '7. Install VNC and inactive systemd power-protection units.'
+        say '7b. Only with RENAME_FROM: move the earlier station'"'"'s local state and Dropbox folder to the new name.'
         say '8. Preflight recorder/Dropbox; preserve/create remote config; optional upload/email tests.'
         say '9. Read Starlink snow setting, or explicitly requested verified off attempt.'
         say "10. Field activation for next boot: $ENABLE_FIELD. No reboot/poweroff."
@@ -784,6 +951,8 @@ main() {
     fi
     [[ -n $CONFIG || $BUNDLE == yes ]] || fail '--config is required (or run inside an unzipped TELE bundle)'
     trap cleanup EXIT
+    INSTALL_STARTED=$(date -u '+%F %H:%M')
+    REPORT_NOTES=$(mktemp /var/tmp/tele-notes.XXXXXX)
     if [[ $BUNDLE == yes ]]; then
         [[ $EUID == 0 ]] || fail 'Run with sudo:  sudo bash INSTALL.sh'
         # Files from a zip belong to the desktop user; work from a private root-owned copy.
@@ -800,6 +969,7 @@ main() {
     step 'Install and authorize Tailscale SSH' install_tailscale
     step 'Deploy TELE and private configuration' install_release_and_config
     step 'Install private VNC and power-protection services' install_services
+    if [[ -n $RENAME_FROM ]]; then step "Rename station $RENAME_FROM to $(get station)" rename_station; fi
     step 'Check recorder, Dropbox and email' check_connections
     step 'Check Starlink snow-melt configuration' check_starlink
     if [[ $ENABLE_FIELD == yes ]]; then step 'Enable field operation for next boot' enable_field; fi

@@ -17,6 +17,51 @@ test_no_internet_stops_early_with_instructions() {
     grep -q 'resolvectl' "$BASE/net"
     bash -c 'source "$1/INSTALL.sh"; curl() { return 0; }; require_internet' _ "$ROOT"
 }
+test_rename_moves_state_and_dropbox_folder() {
+    source "$ROOT/INSTALL.sh"
+    local lib="$BASE/rn/var/lib/tele" calls="$BASE/rn-calls"
+    rm -rf "$BASE/rn" "$calls"
+    mkdir -p "$lib/tele10/sources/S1/verified" "$lib/tele10/sources/S1/pending" "$lib/cad0/pending" "$lib/cad0/verified"
+    printf '{"day":"2025-01-01","destination":"tele_dropbox:telemetry/tele/tele10/pegasus_harvester/S1"}\n' \
+        >"$lib/tele10/sources/S1/verified/2025-01-01.json"
+    STATION_NAME=cad0 STATE_ROOT="$lib/cad0" REMOTE_BASE=tele_dropbox:telemetry/tele/cad0
+    USER_NAME=cad0 RENAME_FROM_USER=nobody-here-xyz REPORT_NOTES="$BASE/rn-notes"; : >"$REPORT_NOTES"
+    cloud() { echo "cloud $*" >>"$calls"; printf 'config.txt\n2025/a.mseed\n2025/b.mseed\n'; }
+    watched() { echo "watched $*" >>"$calls"; }
+    rename_station_data tele10 >/dev/null
+    [[ -d $lib/cad0/sources/S1/verified && ! -e $lib/tele10 ]]
+    jq -e '.destination == "tele_dropbox:telemetry/tele/cad0/pegasus_harvester/S1"' \
+        "$lib/cad0/sources/S1/verified/2025-01-01.json" >/dev/null
+    grep -q 'rclone move tele_dropbox:telemetry/tele/tele10 tele_dropbox:telemetry/tele/cad0' "$calls"
+    grep -q -- '--exclude /config.txt' "$calls"
+    grep -q '^OK Dropbox folder moved: 2 file(s)' "$REPORT_NOTES"
+    # A second run finds nothing local and (stub) the same listing; it must not fail.
+    rename_station_data tele10 >/dev/null
+}
+test_rename_refuses_when_both_hold_data() {
+    source "$ROOT/INSTALL.sh"
+    local lib="$BASE/rn2/var/lib/tele"
+    rm -rf "$BASE/rn2"
+    mkdir -p "$lib/tele10/sources" "$lib/cad0/sources/S9"
+    : >"$lib/tele10/sources/f"; : >"$lib/cad0/sources/S9/g"
+    if (STATION_NAME=cad0 STATE_ROOT="$lib/cad0" REMOTE_BASE=r:telemetry/tele/cad0
+        cloud() { :; }; rename_station_data tele10) >"$BASE/rn2.out" 2>&1; then return 1; fi
+    grep -q 'hold data' "$BASE/rn2.out"
+}
+test_report_for_success_and_failure() {
+    source "$ROOT/INSTALL.sh"
+    REPORT_NOTES="$BASE/notes"; REPORT_FILE="$BASE/report.txt"; BUNDLE=no
+    printf 'OK Computer name set to cad0\nWARN Test email slow\nTODO Remove the old account\n' >"$REPORT_NOTES"
+    declare -gA SETUP=([station]=cad0); USER_NAME=cad0 SHA=abc1234 CURRENT_STAGE='Check recorder, Dropbox and email'
+    write_report 0 >/dev/null
+    grep -q 'Result:     SUCCESS with 1 warning' "$REPORT_FILE"
+    grep -q 'OK    Computer name set to cad0' "$REPORT_FILE"
+    grep -q '  - Remove the old account' "$REPORT_FILE"
+    grep -q 'Station:    cad0' "$REPORT_FILE"
+    write_report 1 >/dev/null
+    grep -q "FAILED at 'Check recorder, Dropbox and email'" "$REPORT_FILE"
+    ! grep -q 'Password' "$REPORT_FILE" || true
+}
 test_unknown_option_fails() {
     if bash "$ROOT/INSTALL.sh" --nonsense >"$BASE/error" 2>&1; then return 1; fi
 }

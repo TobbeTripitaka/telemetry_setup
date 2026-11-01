@@ -3317,6 +3317,46 @@ Check the dedicated password file, parent-directory traversal, virtual-desktop
 dependencies and startup script. Verify the Mac SSH tunnel before changing
 server settings; never fix a tunnel problem by exposing VNC publicly.
 
+### The installation report
+
+When the installer ends, successfully or not, it writes a short plain-text
+report to `/var/log/tele-install-report.txt`, copies it to `INSTALL-REPORT.txt`
+in the bundle folder and (best effort) uploads it to Dropbox under
+`tele_logfiles/installation/`. It states the result (SUCCESS, SUCCESS with
+warnings, or FAILED at which stage), the date, the station, computer and
+account names, the revision, whether field mode is on, a list of checks (name,
+password changed, automatic login, Tailscale, recorder, Dropbox test, test
+email) and a short to-do list. Passwords never appear in it. Ask the
+technician to send it back after every installation.
+
+### Rename a station that already holds data
+
+A computer that already ran as station `tele10` and must now be `cad0` needs the
+rename step, otherwise `cad0` starts empty and uploads the whole backlog again.
+Generate the new bundle with the old name:
+
+```bash
+# Run on: your Mac, next to make-station.sh
+./make-station.sh cad0 NEWPASSWORD --rename-from tele10
+```
+
+This adds `RENAME_FROM=tele10` (and optionally `RENAME_FROM_USER=`) to the setup
+file. Besides the usual name, new account with the new password, and automatic
+login (no password at login), the installer then, before the checks:
+
+1. moves `/var/lib/tele/tele10` to `/var/lib/tele/cad0` and rewrites the Dropbox
+   folder named in each upload acknowledgment, so nothing is uploaded twice;
+2. moves the Dropbox folder `tele/tele10` to `tele/cad0` with a server-side move
+   (existing files are never overwritten, and each station keeps its own
+   `config.txt`);
+3. sets the Tailscale name to the new computer name.
+
+It stops without changing anything if both the old and the new station already
+hold local data. It can be rerun safely. The old account is not deleted, because
+the installer may be running as that account: the report tells you to run
+`sudo deluser --remove-home tele10` after the reboot, logged in as the new
+account. The old entry in the Tailscale admin console may need removing by hand.
+
 ### The installer says "No internet"
 
 The installer downloads Ubuntu packages and two helper programs, so the

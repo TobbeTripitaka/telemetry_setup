@@ -49,10 +49,21 @@ prepare_run() {
     trap workflow_exit EXIT
     trap 'exit 143' TERM
     trap 'exit 130' INT
-    log "TELE $(<"$SCRIPT_DIR/VERSION") station=$STATION_NAME mode=$RUN_MODE"
+    set_run_deadline
+    log "TELE $(<"$SCRIPT_DIR/VERSION") station=$STATION_NAME${LOCATION:+ location=$LOCATION} mode=$RUN_MODE"
     log "Configuration: $CONFIG_DIR; destination: $REMOTE_BASE"
     load_credentials "$CONFIG_DIR/credentials.txt"
     check_dependencies || return 1
+}
+
+set_run_deadline() {
+    unset RUN_DEADLINE
+    [[ ${RUN_MODE:-} == field ]] || return 0
+    RUN_DEADLINE=$RUN_LIMIT_SECONDS
+}
+
+run_limit_reached() {
+    [[ -n ${RUN_DEADLINE:-} ]] && (( $(uptime_seconds) >= RUN_DEADLINE ))
 }
 
 workflow_exit() {
@@ -99,6 +110,7 @@ wait_for_internet() {
 refresh_settings() {
     log "1b. Load and validate the station's remote settings"
     load_runtime_config || { RUN_STATUS=PARTIAL; log "Using local settings"; }
+    set_run_deadline
 }
 
 check_upload_connection() {
@@ -123,6 +135,10 @@ upload_station_logs() {
 }
 
 send_run_report() {
+    if run_limit_reached; then
+        RUN_STATUS=PARTIAL
+        log "Run time limit (${RUN_LIMIT_SECONDS}s since boot) reached: unfinished work continues at the next boot"
+    fi
     log "6. Send run report: $RUN_STATUS; sources OK=$SOURCES_OK failed=$SOURCES_FAILED"
     send_notification "$RUN_STATUS" || { RUN_STATUS=PARTIAL; log "Email unavailable; inspect local logs"; }
     NOTIFIED=1

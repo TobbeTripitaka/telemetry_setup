@@ -1405,7 +1405,7 @@ day's log file (for example `Z9.0496..LOG.D.2023.344.txt`, 111 bytes against
 34063 bytes) into the next day's export. A log or other non-waveform file with
 different content is therefore uploaded under a second name,
 `<native name>.conflict-<day>`, the run logs a warning, and the list is saved
-as `tele_logfiles/receipts/<serial>/<day>.conflicts.txt`. The Harvester
+as `tele_logfiles/receipts/<serial>/<day>.conflicts.txt`, sent together with the day's other receipts in a single transfer. The Harvester
 repeats the same fragment in every later daily export; a second version that
 is identical to one already uploaded is not uploaded again, and a day with
 nothing new is acknowledged locally without any Dropbox traffic. Waveform files (the
@@ -1705,8 +1705,7 @@ my_dropbox_path/
         <native Harvester paths, unchanged>
       tele_logfiles/
         <run logs and diagnostics>
-        harvest/
-        receipts/<recorder_serial>/
+        receipts/<recorder_serial>/   (per day: json, dropbox.sum, harvest.log)
       <future_extension>/
     station02/
       config.txt
@@ -2221,6 +2220,7 @@ rather than choosing a guessed upload folder. No configuration is executed as sh
 | `MAINTENANCE_IDLE_SECONDS` | `600` | Integer 0–3600; used only in SSH/VNC modes |
 | `HARVEST_BUDGET_SECONDS` | `3600` | Integer 1–3600; shared source-collection allowance, including device/network calls |
 | `NETWORK_TIMEOUT_SECONDS` | `300` | Integer 10–600; bound for each rclone operation |
+| `RUN_LIMIT_SECONDS` | `7200` | Integer 1800–21600; hard limit of one field run, in seconds since boot. Past it every network and harvester call fails at once and the run wraps up (log, email, power off); unfinished days resume at the next boot. Not used by the installer or bench runs |
 | `NETWORK_WAIT_SECONDS` | `1200` | Integer 0–3600; after boot, keep retrying Dropbox every 30 s while Starlink starts. Collection is skipped only if it is still unreachable after this wait |
 | `LOCAL_DATA` | `keep` | `keep` or `clean`; pending (not yet verified) days are never removed in either case. Legacy `RETAIN_LAST_BATCH=yes/no` maps to `keep`/`clean` |
 | `MIN_FREE_MIB` | `2048` | Integer 256–1048576; free-space reserve threshold |
@@ -3316,6 +3316,43 @@ sudo stat -c '%a %U %G %n' /etc/tele/vnc /etc/tele/vnc/tele.passwd
 Check the dedicated password file, parent-directory traversal, virtual-desktop
 dependencies and startup script. Verify the Mac SSH tunnel before changing
 server settings; never fix a tunnel problem by exposing VNC publicly.
+
+### Restart after installation
+
+A terminal that was open during the installation keeps showing the old account
+and computer name (`whoami` still says the old name): the change applies to new
+logins. With `REBOOT_AFTER=yes` (the default) the installer therefore schedules
+a restart one minute after a successful installation. Cancel it with
+`sudo shutdown -c`. It never restarts after a failure, and not when
+`--enable-field` is used, because that boot would run a field cycle and power
+the computer off. Set `REBOOT_AFTER=no` to restart by hand.
+
+After the restart the computer logs in as the new account, whose home folder is
+empty. After a successful installation the installer therefore copies the bundle
+folder (installer, `INSTALL-REPORT.txt` and the settings file, which keeps mode
+600) to `Desktop` of the new account. The original stays in the old account
+until you delete it. Nothing installed system-wide is tied to an account:
+`/opt/tele`, `/etc/tele`, `/var/lib/tele` and the services work for every login.
+
+### A patchy connection in the field
+
+Every field run is bounded so a poor link cannot drain the battery:
+1. Waiting for Starlink and Dropbox stops after `NETWORK_WAIT_SECONDS`.
+2. Collection and upload share `HARVEST_BUDGET_SECONDS`.
+3. `RUN_LIMIT_SECONDS` (since boot) ends the whole run: after it, no further
+   network or harvester call is started, the log and the email are still
+   attempted, and the computer powers off.
+4. The email is tried three times, ten seconds apart, and the reason of a failure
+   is written to the log.
+5. `EMERGENCY_SECONDS` (default 14400, an extra timer) is the last resort.
+
+Nothing is lost when a run is cut short: a day that cannot be verified stays
+pending locally and is retried at the next boot, and the first failed upload ends
+that source's cycle at once instead of retrying every remaining day. Each day uses
+as few Dropbox round trips as possible: one copy, one verification and one
+receipt transfer; a day with nothing new (for example the repeated log fragment)
+needs none. The installer itself has no time limit: it retries packages and
+downloads several times and runs until it is done.
 
 ### The installation report
 

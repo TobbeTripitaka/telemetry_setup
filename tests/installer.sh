@@ -62,6 +62,34 @@ test_report_for_success_and_failure() {
     grep -q "FAILED at 'Check recorder, Dropbox and email'" "$REPORT_FILE"
     ! grep -q 'Password' "$REPORT_FILE" || true
 }
+test_restart_is_scheduled_only_after_success_without_field() {
+    source "$ROOT/INSTALL.sh"
+    local calls="$BASE/reboot-calls"; : >"$calls"
+    REPORT_NOTES="$BASE/reboot-notes"; : >"$REPORT_NOTES"
+    shutdown() { echo "shutdown $*" >>"$calls"; }
+    declare -gA SETUP=()
+    ENABLE_FIELD=no schedule_reboot >/dev/null
+    grep -q '^shutdown -r +1' "$calls"
+    [[ $REBOOT_SCHEDULED == yes ]]
+    : >"$calls"; REBOOT_SCHEDULED=no
+    ENABLE_FIELD=yes schedule_reboot >/dev/null
+    declare -gA SETUP=([REBOOT_AFTER]=no)
+    ENABLE_FIELD=no schedule_reboot >/dev/null
+    [[ ! -s $calls && $REBOOT_SCHEDULED == no ]]
+}
+test_bundle_is_copied_to_the_new_account() {
+    source "$ROOT/INSTALL.sh"
+    local me; me=$(id -un)
+    HOME_BASE="$BASE/home"; mkdir -p "$HOME_BASE/old/Desktop/cad0" "$HOME_BASE/$me"
+    printf 'station=cad0\n' >"$HOME_BASE/old/Desktop/cad0/setup.conf"; : >"$HOME_BASE/old/Desktop/cad0/INSTALL.sh"
+    BUNDLE=yes CONFIG_DIR="$HOME_BASE/old/Desktop/cad0" USER_NAME=$me
+    copy_bundle_to_operator >/dev/null
+    [[ -f $HOME_BASE/$me/Desktop/cad0/setup.conf && -f $HOME_BASE/$me/Desktop/cad0/INSTALL.sh ]]
+    [[ $(stat -c %a "$HOME_BASE/$me/Desktop/cad0/setup.conf") == 600 ]]
+    # Already inside the account's own home: nothing to copy.
+    CONFIG_DIR="$HOME_BASE/$me/Desktop/cad0"
+    if operator_copy_dir >/dev/null; then return 1; fi
+}
 test_unknown_option_fails() {
     if bash "$ROOT/INSTALL.sh" --nonsense >"$BASE/error" 2>&1; then return 1; fi
 }

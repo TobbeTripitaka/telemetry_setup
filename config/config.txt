@@ -8,6 +8,9 @@ HARVEST_MODE=incremental
 HARVEST_BUDGET_SECONDS=3600
 # Starlink starts with the computer; wait up to this long for Dropbox.
 NETWORK_WAIT_SECONDS=1200
+# Hard limit of one field run, in seconds since boot. Past it the run wraps up
+# (log, email, power off) even if the connection is patchy. 1800..21600.
+RUN_LIMIT_SECONDS=7200
 LOCAL_DATA=keep
 # For a resumable full scan:
 # HARVEST_MODE=reconcile

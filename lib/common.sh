@@ -113,6 +113,14 @@ source_timeout() {
         ((remaining > 0)) || return 124
         ((seconds <= remaining)) || seconds=$remaining
     fi
+    # Overall limit of a field run (seconds since boot, like the emergency timer):
+    # past it every network or harvester call fails at once, so a run on a patchy
+    # connection wraps up (log, email, power off) instead of draining the battery.
+    if [[ -n ${RUN_DEADLINE:-} ]]; then
+        remaining=$((RUN_DEADLINE - $(uptime_seconds)))
+        ((remaining > 0)) || return 124
+        ((seconds <= remaining)) || seconds=$remaining
+    fi
     timeout --signal=TERM --kill-after=10 "$seconds" "$@"
 }
 

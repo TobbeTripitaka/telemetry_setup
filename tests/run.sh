@@ -30,7 +30,7 @@ cloud() {
     printf '%s\n' "$*" >>"$STATE_ROOT/cloud-calls"
     if [[ $FAULT == copy && $1 == copy ]]; then return 9; fi
     if [[ $FAULT == check && $1 == check && $3 == "$REMOTE_DATA" ]]; then return 9; fi
-    if [[ $FAULT == receipt && $1 == copyto ]]; then return 9; fi
+    if [[ $FAULT == receipt && $1 == copy && $2 == *receipt-out* ]]; then return 9; fi
     timeout -k 1 10 rclone --config /dev/null "$@" --retries 1 --low-level-retries 1 \
         --log-level ERROR
 }
@@ -317,6 +317,39 @@ test_email_retries_and_reports_the_reason() {
     [[ $(wc -l <"$BASE/curl-calls") == 3 ]]
     [[ $EMAIL_ERROR == *'curl status 67'*'Login denied'* ]]
     ! grep -q secretsecret1234 "$LOG_FILE"
+}
+test_location_label_in_email_and_validation() {
+    mkdir -p "$BASE/fakebin2"
+    printf '#!/usr/bin/env bash\nwhile (($#)); do [[ $1 == --upload-file ]] && cp -- "$2" "%s/mail.txt"; shift; done\n' "$BASE" >"$BASE/fakebin2/curl"
+    chmod +x "$BASE/fakebin2/curl"
+    EMAIL_TO=a@example.com EMAIL_FROM=b@example.com EMAIL_PASSWORD=secretsecret1234
+    HARVEST_MODE=incremental EXECUTE=auto MAINTENANCE_IDLE_SECONDS=600 LOCATION="Carey Ntk"
+    PATH="$BASE/fakebin2:$PATH" send_notification SUCCESS
+    grep -q $'^Subject: TELE test-station (Carey Ntk) SUCCESS\r' "$BASE/mail.txt"
+    grep -q '^Location: Carey Ntk' "$BASE/mail.txt"
+    LOCATION=''
+    PATH="$BASE/fakebin2:$PATH" send_notification SUCCESS
+    grep -q $'^Subject: TELE test-station SUCCESS\r' "$BASE/mail.txt"
+    valid_location MtBrown && valid_location "Mt. Brown (South)"
+    expect_failure valid_location ' x'; expect_failure valid_location 'a;b'
+    expect_failure valid_location "$(printf 'a%.0s' {1..61})"
+    printf 'LOCATION=Carey Ntk\nRCLONE_REMOTE=r\n' >"$STATE_ROOT/node.conf"; chmod 600 "$STATE_ROOT/node.conf"
+    load_node_config "$STATE_ROOT/node.conf"
+    [[ $LOCATION == 'Carey Ntk' ]]
+}
+test_run_limit_stops_network_calls() {
+    uptime_seconds() { echo 5000; }
+    RUN_DEADLINE=4000 expect_failure source_timeout 30 true
+    [[ $(RUN_DEADLINE=4000 source_timeout 30 true; echo $?) == 124 ]]
+    RUN_DEADLINE=9000 source_timeout 30 true
+    RUN_MODE=once set_run_deadline; [[ -z ${RUN_DEADLINE:-} ]]
+    RUN_MODE=field RUN_LIMIT_SECONDS=7200 set_run_deadline; [[ $RUN_DEADLINE == 7200 ]]
+    run_limit_reached && return 1
+    uptime_seconds() { echo 8000; }
+    run_limit_reached
+    expect_failure runtime_key RUN_LIMIT_SECONDS 1799
+    runtime_key RUN_LIMIT_SECONDS 7200
+    unset RUN_DEADLINE
 }
 test_open_day_update_rewrites_claim() {
     mkdir "$STATE_ROOT/a"

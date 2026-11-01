@@ -86,8 +86,7 @@ Each station has its own directory and configuration:
     <native Harvester directories and filenames>
   tele_logfiles/
     <run logs and diagnostics>
-    harvest/
-    receipts/<recorder_serial>/
+    receipts/<recorder_serial>/   (per day: json, dropbox.sum, harvest.log)
   <future_extension>/
 ```
 

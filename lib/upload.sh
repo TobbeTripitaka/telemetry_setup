@@ -161,19 +161,19 @@ upload_batch() {
                 cloud copyto "$batch/files/$rel" "$REMOTE_DATA/$rel.conflict-$day" "${flags[@]}" \
                     >>"$LOG_FILE" 2>&1 || return 1
             done <"$conflicts"
-            cloud copyto "$conflicts" "$REMOTE_BASE/tele_logfiles/receipts/$RECORDER_SERIAL/$day.conflicts.txt" \
-                --checksum >>"$LOG_FILE" 2>&1 || return 1
         fi
         cloud check "$verify" "$REMOTE_DATA" --checkfile Dropbox --one-way \
             >>"$LOG_FILE" 2>&1 || return 1
         record_second_versions "$batch" "$conflicts" || return 1
-        # Keep a small remote receipt to diagnose/rebuild local state later.
-        cloud copyto "$batch/receipt.json" "$REMOTE_BASE/tele_logfiles/receipts/$RECORDER_SERIAL/$day.json" \
-            --checksum >>"$LOG_FILE" 2>&1 || return 1
-        cloud copyto "$batch/dropbox.sum" "$REMOTE_BASE/tele_logfiles/receipts/$RECORDER_SERIAL/$day.dropbox.sum" \
-            --checksum >>"$LOG_FILE" 2>&1 || return 1
-        cloud copyto "$batch/harvest.log" "$REMOTE_BASE/tele_logfiles/harvest/$RUN_ID-$day.log" \
-            --checksum >>"$LOG_FILE" 2>&1 || return 1
+        # Small remote receipts to diagnose/rebuild local state later: ONE
+        # transfer for all of them (every round trip is slow on a patchy link).
+        rm -rf -- "$batch/receipt-out" && mkdir "$batch/receipt-out" || return 1
+        cp -- "$batch/receipt.json" "$batch/receipt-out/$day.json" || return 1
+        cp -- "$batch/dropbox.sum" "$batch/receipt-out/$day.dropbox.sum" || return 1
+        [[ ! -f $batch/harvest.log ]] || cp -- "$batch/harvest.log" "$batch/receipt-out/$day.harvest.log" || return 1
+        [[ ! -s $conflicts ]] || cp -- "$conflicts" "$batch/receipt-out/$day.conflicts.txt" || return 1
+        cloud copy "$batch/receipt-out" "$REMOTE_BASE/tele_logfiles/receipts/$RECORDER_SERIAL" \
+            --no-traverse --checksum >>"$LOG_FILE" 2>&1 || return 1
     fi
     # The acknowledgment is the LAST correctness-changing action.
     temp=$(mktemp "$VERIFIED/.$day.XXXXXX") || return 1

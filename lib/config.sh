@@ -41,6 +41,8 @@ node_key() {
             [[ $value == /* && $value != *$'\t'* ]] || return 1 ;;
         STARLINK_ADDRESS)
             [[ $value =~ ^[A-Za-z0-9.-]+:[0-9]{1,5}$ ]] || return 1 ;;
+        LOCATION)
+            valid_location "$value" || return 1 ;;
         STARLINK_EXPECT_SNOW_OFF)
             [[ $value == yes || $value == no ]] || return 1 ;;
         VNC_SERVICE)
@@ -70,7 +72,7 @@ normalize_dropbox_root() {
 load_node_config() {
     local file=$1
     check_private_file "$file" || { die "Unsafe node configuration"; return 1; }
-    STATION_NAME='' RCLONE_REMOTE='' RECORDER_SERIAL='' RECORDER_DEVICE=''
+    STATION_NAME='' RCLONE_REMOTE='' RECORDER_SERIAL='' RECORDER_DEVICE='' LOCATION=''
     DROPBOX_ROOT='' VNC_SERVICE=tele-vnc@tele.service VNC_PORT=5901
     PEGASUS_BIN=/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
     RCLONE_CONFIG=/etc/tele/rclone.conf
@@ -92,6 +94,7 @@ runtime_defaults() {
     HARVEST_BUDGET_SECONDS=3600
     NETWORK_TIMEOUT_SECONDS=300
     NETWORK_WAIT_SECONDS=1200
+    RUN_LIMIT_SECONDS=7200
     LOCAL_DATA=keep
     MIN_FREE_MIB=2048
     OVERLAP_DAYS=2
@@ -111,6 +114,7 @@ runtime_key() {
         HARVEST_BUDGET_SECONDS) integer_between "$value" 1 3600 || return 1 ;;
         NETWORK_TIMEOUT_SECONDS) integer_between "$value" 10 600 || return 1 ;;
         NETWORK_WAIT_SECONDS) integer_between "$value" 0 3600 || return 1 ;;
+        RUN_LIMIT_SECONDS) integer_between "$value" 1800 21600 || return 1 ;;
         LOCAL_DATA) [[ $value =~ ^(keep|clean)$ ]] || return 1 ;;
         # Legacy name, still accepted from older remote config files.
         RETAIN_LAST_BATCH)
@@ -134,6 +138,13 @@ validate_runtime() {
     if [[ $HARVEST_MODE == range ]]; then
         [[ -n $FROM_DATE && -n $TO_DATE && $FROM_DATE < $TO_DATE ]] || return 1
     fi
+}
+
+valid_location() {
+    # Free label for emails and reports (for example "Carey Ntk"). Plain ASCII only,
+    # so it is safe in an email header and in every file name and log.
+    local re="^[A-Za-z0-9][-A-Za-z0-9 ._,()/']{0,59}\$"
+    [[ $1 =~ $re && $1 != *' ' ]]
 }
 
 valid_station() {

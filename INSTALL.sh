@@ -34,7 +34,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MODE=confirm MODE_SET=no CONFIG='' CONFIG_DIR='' PRIVATE_CONF='' BUNDLE=no
 REF=main SOURCE_DIR='' ENABLE_FIELD=no WORK='' CURRENT_STAGE=arguments
 REPORT_NOTES='' REPORT_FILE=/var/log/tele-install-report.txt INSTALL_STARTED=''
-RENAME_FROM='' RENAME_FROM_USER=''
+RENAME_FROM='' RENAME_FROM_USER='' REBOOT_SCHEDULED=no
 note() {
     # usage: note OK|WARN|TODO text. Collected for the closing report; works from subshells.
     [[ -n $REPORT_NOTES ]] || return 0
@@ -42,7 +42,7 @@ note() {
 }
 write_report() {
     # A short, plain-text summary the technician can read or send back.
-    local rc=$1 result warns=0 line text
+    local rc=$1 result warns=0 line text target
     [[ -n $REPORT_NOTES ]] || return 0
     warns=$(grep -c '^WARN ' "$REPORT_NOTES" 2>/dev/null || true)
     if ((rc)); then result="FAILED at '$CURRENT_STAGE' (status $rc)"
@@ -53,6 +53,7 @@ write_report() {
         printf 'Result:     %s\n' "$result"
         printf 'Finished:   %s UTC (started %s UTC)\n' "$(date -u '+%F %H:%M')" "$INSTALL_STARTED"
         printf 'Station:    %s\n' "$(get station)"
+        [[ -z ${LOCATION:-} ]] || printf 'Location:   %s\n' "$LOCATION"
         printf 'Computer:   %s    Account: %s\n' "$(hostname 2>/dev/null || echo unknown)" "${USER_NAME:-unknown}"
         printf 'Revision:   %s\n' "${SHA:-unknown}"
         if [[ -e /etc/tele/FIELD_ENABLED ]]; then printf 'Field mode: ENABLED for the next boot (computer powers off after each run)\n'
@@ -63,10 +64,17 @@ write_report() {
         done
         if ((rc)); then printf '  FAIL  Stopped at: %s. Fix it and rerun; finished stages are skipped.\n' "$CURRENT_STAGE"; fi
         printf '\nTo do\n'
+        if ((rc == 0)) && target=$(operator_copy_dir); then
+            printf '  - After the restart the installer folder is on the Desktop of %s: %s\n' "$USER_NAME" "$target"
+        fi
         { grep -E '^TODO ' "$REPORT_NOTES" || true; } | while IFS= read -r line; do printf '  - %s\n' "${line#TODO }"; done
         if ((rc == 0)); then
             [[ ! -e /var/run/reboot-required ]] || printf '  - Ubuntu asks for a reboot.\n'
-            printf '  - Reboot, check that it logs in by itself, then run: sudo /opt/tele/current/tele.sh --check\n'
+            if [[ $REBOOT_SCHEDULED == yes ]]; then
+                printf '  - The computer reboots by itself. After it logs in as %s, run: sudo /opt/tele/current/tele.sh --check\n' "${USER_NAME:-the account}"
+            else
+                printf '  - Reboot, check that it logs in by itself, then run: sudo /opt/tele/current/tele.sh --check\n'
+            fi
         fi
     } >"$REPORT_FILE.new" 2>/dev/null || return 0
     mv -f -- "$REPORT_FILE.new" "$REPORT_FILE" 2>/dev/null || return 0
@@ -77,6 +85,29 @@ write_report() {
     fi
     text=$(<"$REPORT_FILE")
     printf '\n%s\n\nSaved as %s\n' "$text" "$REPORT_FILE"
+    if ((rc == 0)); then copy_bundle_to_operator; fi
+}
+operator_copy_dir() {
+    # Where the bundle folder is copied for the operator account, if that account
+    # is not the one whose Desktop holds the folder now.
+    [[ $BUNDLE == yes && -n ${USER_NAME:-} && -d $CONFIG_DIR ]] || return 1
+    local base
+    base=$(basename -- "$CONFIG_DIR")
+    case $CONFIG_DIR in "$HOME_BASE/$USER_NAME"/*) return 1 ;; esac
+    printf '%s/%s/Desktop/%s\n' "$HOME_BASE" "$USER_NAME" "$base"
+}
+copy_bundle_to_operator() {
+    # A restart switches to the new account, whose home is empty: put the folder
+    # (installer, report, settings) on that account's Desktop so it is not lost.
+    local target group
+    target=$(operator_copy_dir) || return 0
+    id "$USER_NAME" >/dev/null 2>&1 || return 0
+    group=$(id -gn "$USER_NAME")
+    install -d -o "$USER_NAME" -g "$group" -m 755 "$(dirname -- "$target")" || return 0
+    rsync -a -- "$CONFIG_DIR/" "$target/" || { echo "WARNING: could not copy the installer folder to $target" >&2; return 0; }
+    chown -R "$USER_NAME:$group" -- "$target" || true
+    chmod 600 -- "$target/setup.conf" 2>/dev/null || true
+    printf 'Copy of the installer folder for the account %s: %s\n' "$USER_NAME" "$target"
 }
 upload_report() {
     # Best effort, never changes the installation result.
@@ -141,7 +172,7 @@ parse_setup() {
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
           OPERATOR_USER|TAILSCALE_AUTH_KEY|ENABLE_VNC|VNC_PASSWORD|\
           STARLINK_ADDRESS|STARLINK_SNOW_MELT|EMERGENCY_SECONDS|DISABLE_SLEEP|\
-          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|\
+          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|REBOOT_AFTER|LOCATION|RUN_LIMIT_SECONDS|\
           EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|NETWORK_WAIT_SECONDS|\
           UPLOAD_TEST|EMAIL_TEST) ;;
           *) fail "Unknown setup key: $key" ;;
@@ -153,6 +184,7 @@ parse_setup() {
 get() { printf '%s' "${SETUP[$1]:-${2:-}}"; }
 download() {
     timeout --foreground -k 10 300 curl --fail --silent --show-error --location \
+        --retry 4 --retry-delay 5 --retry-all-errors \
         --proto '=https' --proto-redir '=https' --connect-timeout 20 --max-time 280 \
         "$1" --output "$2"
 }
@@ -242,7 +274,7 @@ watched() {
 apt_run() {
     # usage: apt_run SECONDS apt-get-arguments...
     local limit=$1; shift
-    watched "$limit" "apt-get $*" apt-get -o DPkg::Lock::Timeout=300 \
+    watched "$limit" "apt-get $*" apt-get -o DPkg::Lock::Timeout=300 -o Acquire::Retries=4 \
         -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold "$@"
 }
 apt_install() { apt_run 1800 install -y "$@"; }
@@ -338,6 +370,9 @@ validate_setup() {
     COMPUTER_NAME=$(get COMPUTER_NAME)
     [[ -z $COMPUTER_NAME || $COMPUTER_NAME =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
         fail 'COMPUTER_NAME: lowercase letters, digits and hyphens only (for example tele9)'
+    LOCATION=$(get LOCATION)
+    [[ -z $LOCATION ]] || valid_location "$LOCATION" ||
+        fail 'LOCATION: up to 60 plain characters (letters, digits, space and . , _ - ( ) / only), for example "Carey Ntk"'
     RENAME_FROM=$(get RENAME_FROM)
     [[ -z $RENAME_FROM ]] || valid_station "$RENAME_FROM" || fail 'RENAME_FROM is not a valid station name'
     RENAME_FROM_USER=$(get RENAME_FROM_USER "$RENAME_FROM")
@@ -362,7 +397,7 @@ validate_setup() {
     node_key STARLINK_ADDRESS "$(get STARLINK_ADDRESS 192.168.100.1:9200)" || fail 'Invalid Starlink address'
     local key
     for key in ENABLE_VNC DISABLE_SLEEP UPLOAD_TEST EMAIL_TEST \
-               SYSTEM_UPGRADE DISABLE_AUTO_UPDATES AUTOLOGIN; do
+               SYSTEM_UPGRADE DISABLE_AUTO_UPDATES AUTOLOGIN REBOOT_AFTER; do
         [[ $(get "$key" yes) =~ ^(yes|no)$ ]] || fail "$key must be yes/no"
     done
     [[ $(get STARLINK_SNOW_MELT read) =~ ^(read|off)$ ]] || fail 'STARLINK_SNOW_MELT must be read/off'
@@ -372,6 +407,7 @@ validate_setup() {
     runtime_key HARVEST_BUDGET_SECONDS "$(get HARVEST_BUDGET_SECONDS 3600)" || fail 'Invalid harvest budget'
     runtime_key MAINTENANCE_IDLE_SECONDS "$(get MAINTENANCE_IDLE_SECONDS 600)" || fail 'Invalid maintenance window'
     runtime_key NETWORK_WAIT_SECONDS "$(get NETWORK_WAIT_SECONDS 1200)" || fail 'NETWORK_WAIT_SECONDS: 0..3600'
+    runtime_key RUN_LIMIT_SECONDS "$(get RUN_LIMIT_SECONDS 7200)" || fail 'RUN_LIMIT_SECONDS: 1800..21600'
     [[ $EXECUTE != vnc || $(get ENABLE_VNC yes) == yes ]] || fail 'EXECUTE=vnc requires ENABLE_VNC=yes'
     for key in EMAIL_FROM EMAIL_TO EMAIL_PASSWORD; do
         credential_key "$key" "$(get "$key")" || fail "Missing/invalid $key"
@@ -690,6 +726,7 @@ install_release_and_config() {
         printf 'RCLONE_REMOTE=%s\nDROPBOX_ROOT=%s\n' "$REMOTE" "$DROPBOX_ROOT"
         printf 'RCLONE_CONFIG=/etc/tele/rclone.conf\nSOURCE_PROFILES_DIR=/etc/tele/sources.d\n'
         printf 'PEGASUS_BIN=%s\nVNC_SERVICE=tele-vnc@%s.service\nVNC_PORT=5901\n' "$BIN" "$USER_NAME"
+        [[ -z $LOCATION ]] || printf 'LOCATION=%s\n' "$LOCATION"
         printf 'STARLINK_ADDRESS=%s\nSTARLINK_EXPECT_SNOW_OFF=%s\n' "$STARLINK_ADDRESS" \
             "$([[ $(get STARLINK_SNOW_MELT read) == off ]] && printf yes || printf no)"
         if [[ ! -f $WORK/sources.json && -n $(get RECORDER_DEVICE) ]]; then
@@ -702,6 +739,7 @@ install_release_and_config() {
         printf 'HARVEST_BUDGET_SECONDS=%s\n' "$(get HARVEST_BUDGET_SECONDS 3600)"
         printf 'MAINTENANCE_IDLE_SECONDS=%s\n' "$(get MAINTENANCE_IDLE_SECONDS 600)"
         printf 'NETWORK_WAIT_SECONDS=%s\n' "$(get NETWORK_WAIT_SECONDS 1200)"
+        printf 'RUN_LIMIT_SECONDS=%s\n' "$(get RUN_LIMIT_SECONDS 7200)"
         printf 'LOCAL_DATA=%s\n' "$LOCAL_DATA_VALUE"
     } >"$WORK/config/config.txt"
     for key in EMAIL_FROM EMAIL_TO EMAIL_PASSWORD; do
@@ -910,6 +948,18 @@ enable_field() {
         fail 'Field activation failed; activation marker removed'
     fi
 }
+schedule_reboot() {
+    # The new account, computer name and automatic login only apply after a
+    # restart. Never after a failure, and never when field mode was just
+    # enabled (that boot would run a field cycle and power the computer off).
+    [[ $(get REBOOT_AFTER yes) == yes && $ENABLE_FIELD != yes ]] || return 0
+    shutdown -r +1 'TELE installation finished: restarting to apply the new account and automatic login' ||
+        { note WARN 'Could not schedule the restart; restart by hand: sudo reboot'; return 0; }
+    REBOOT_SCHEDULED=yes
+    note OK 'Restart scheduled in one minute (cancel with: sudo shutdown -c)'
+    say 'The computer restarts in one minute to apply the new account and automatic login.'
+    say 'To cancel: sudo shutdown -c'
+}
 main() {
     while (($#)); do
         case "$1" in
@@ -973,7 +1023,8 @@ main() {
     step 'Check recorder, Dropbox and email' check_connections
     step 'Check Starlink snow-melt configuration' check_starlink
     if [[ $ENABLE_FIELD == yes ]]; then step 'Enable field operation for next boot' enable_field; fi
-    say "Installed TELE revision $SHA. No reboot or poweroff was requested."
+    schedule_reboot
+    say "Installed TELE revision $SHA."
     if [[ $BUNDLE == yes ]]; then
         say "This folder holds passwords (setup.conf). Delete it when the installation is accepted:"
         say "  sudo rm -rf '$SCRIPT_DIR'"

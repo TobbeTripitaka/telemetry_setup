@@ -3317,6 +3317,14 @@ Check the dedicated password file, parent-directory traversal, virtual-desktop
 dependencies and startup script. Verify the Mac SSH tunnel before changing
 server settings; never fix a tunnel problem by exposing VNC publicly.
 
+### The installer says "No internet"
+
+The installer downloads Ubuntu packages and two helper programs, so the
+computer must be online (Starlink running, or a cable or Wi-Fi connection)
+before `sudo bash INSTALL.sh`. It checks this first and stops with
+`ERROR: No internet` instead of failing halfway. Connect the network, wait a
+few minutes for Starlink, and rerun; finished stages are skipped.
+
 ### The installer seems frozen
 
 Every long step of `INSTALL.sh` (package installs, updates) runs under a watchdog:

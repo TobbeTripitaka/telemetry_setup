@@ -10,6 +10,13 @@ test_plan_without_config_or_root() {
     grep -q 'PLAN ONLY' "$BASE/plan"
     grep -q 'next boot: no' "$BASE/plan"
 }
+test_no_internet_stops_early_with_instructions() {
+    if bash -c 'source "$1/INSTALL.sh"; curl() { return 6; }; sleep() { :; }; require_internet' \
+        _ "$ROOT" >"$BASE/net" 2>&1; then return 1; fi
+    grep -q 'cannot reach github.com' "$BASE/net"
+    grep -q 'resolvectl' "$BASE/net"
+    bash -c 'source "$1/INSTALL.sh"; curl() { return 0; }; require_internet' _ "$ROOT"
+}
 test_unknown_option_fails() {
     if bash "$ROOT/INSTALL.sh" --nonsense >"$BASE/error" 2>&1; then return 1; fi
 }

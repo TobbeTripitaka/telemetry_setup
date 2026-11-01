@@ -219,7 +219,24 @@ preflight() {
     flock -n 9 || fail 'Another TELE run is active'
     WORK=$(mktemp -d /var/tmp/tele-install.XXXXXX)
 }
+require_internet() {
+    # Fail early and clearly: everything below downloads packages.
+    local try
+    for try in 1 2 3 4 5 6; do
+        if curl --silent --head --fail --connect-timeout 15 --max-time 25 \
+            --proto '=https' https://github.com >/dev/null 2>&1; then
+            return 0
+        fi
+        ((try == 6)) || sleep 10
+    done
+    fail "No internet: this computer cannot reach github.com.
+  Connect the cable or Wi-Fi (or power up Starlink and wait a few minutes), then rerun.
+  To find the cause, run:  ping -c 2 1.1.1.1   and   resolvectl status
+  Pings work but names do not resolve: the DNS server is wrong or down;
+  set another one with  sudo resolvectl dns <interface> 1.1.1.1  and rerun."
+}
 fetch_release() {
+    require_internet
     apt_run 900 update
     apt_install ca-certificates curl jq
     if [[ $BUNDLE == yes ]]; then

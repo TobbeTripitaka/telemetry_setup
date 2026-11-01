@@ -66,10 +66,11 @@ test_restart_is_scheduled_only_after_success_without_field() {
     source "$ROOT/INSTALL.sh"
     local calls="$BASE/reboot-calls"; : >"$calls"
     REPORT_NOTES="$BASE/reboot-notes"; : >"$REPORT_NOTES"
-    shutdown() { echo "shutdown $*" >>"$calls"; }
+    systemctl() { echo "systemctl $*" >>"$calls"; }
+    systemd-run() { echo "systemd-run $*" >>"$calls"; }
     declare -gA SETUP=()
     ENABLE_FIELD=no schedule_reboot >/dev/null
-    grep -q '^shutdown -r +1' "$calls"
+    grep -q '^systemd-run .*--on-active=60s systemctl reboot -i' "$calls"
     [[ $REBOOT_SCHEDULED == yes ]]
     : >"$calls"; REBOOT_SCHEDULED=no
     ENABLE_FIELD=yes schedule_reboot >/dev/null
@@ -89,6 +90,24 @@ test_bundle_is_copied_to_the_new_account() {
     # Already inside the account's own home: nothing to copy.
     CONFIG_DIR="$HOME_BASE/$me/Desktop/cad0"
     if operator_copy_dir >/dev/null; then return 1; fi
+}
+test_run_without_sudo_is_a_clean_error() {
+    [[ $EUID != 0 ]] || return 0
+    printf 'station=x\n' >"$BASE/nosudo.conf"; chmod 600 "$BASE/nosudo.conf"
+    if bash "$ROOT/INSTALL.sh" --mode auto --config "$BASE/nosudo.conf" >"$BASE/nosudo" 2>&1; then return 1; fi
+    grep -q 'Run with sudo' "$BASE/nosudo"
+    ! grep -q 'Permission denied' "$BASE/nosudo"
+}
+test_installation_details_lists_name_password_location() {
+    source "$ROOT/INSTALL.sh"
+    declare -gA SETUP=([station]=cad1); USER_NAME=cad1 OPERATOR_PASSWORD=mypassword1 LOCATION="Carey Ntk" SHA=abcdef0123456789
+    tailscale() { echo 100.1.2.3; }
+    timeout() { shift; "$@"; }
+    local text; text=$(installation_details)
+    [[ $text == *'Station:   cad1'* && $text == *'Location:  Carey Ntk'* && $text == *'Password:  mypassword1'* ]]
+    [[ $text == *'Log in:    ssh cad1@100.1.2.3'* && $text == *'Revision:  abcdef0'* ]]
+    SETUP[INSTALL_EMAIL_DETAILS]=no
+    [[ -z $(installation_details) ]]
 }
 test_unknown_option_fails() {
     if bash "$ROOT/INSTALL.sh" --nonsense >"$BASE/error" 2>&1; then return 1; fi

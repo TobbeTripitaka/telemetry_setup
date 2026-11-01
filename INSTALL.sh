@@ -54,7 +54,7 @@ write_report() {
         printf 'Finished:   %s UTC (started %s UTC)\n' "$(date -u '+%F %H:%M')" "$INSTALL_STARTED"
         printf 'Station:    %s\n' "$(get station)"
         [[ -z ${LOCATION:-} ]] || printf 'Location:   %s\n' "$LOCATION"
-        printf 'Computer:   %s    Account: %s\n' "$(hostname 2>/dev/null || echo unknown)" "${USER_NAME:-unknown}"
+        printf 'Computer:   %s    Account: %s\n' "$(hostname 2>/dev/null || echo unknown)" "${USER_NAME:-not read yet}"
         printf 'Revision:   %s\n' "${SHA:-unknown}"
         if [[ -e /etc/tele/FIELD_ENABLED ]]; then printf 'Field mode: ENABLED for the next boot (computer powers off after each run)\n'
         else printf 'Field mode: off (bench mode; the computer stays on)\n'; fi
@@ -64,6 +64,7 @@ write_report() {
         done
         if ((rc)); then printf '  FAIL  Stopped at: %s. Fix it and rerun; finished stages are skipped.\n' "$CURRENT_STAGE"; fi
         printf '\nTo do\n'
+        if ((rc)); then printf '  - Fix the problem named above, then run again: sudo bash INSTALL.sh\n'; fi
         if ((rc == 0)) && target=$(operator_copy_dir); then
             printf '  - After the restart the installer folder is on the Desktop of %s: %s\n' "$USER_NAME" "$target"
         fi
@@ -125,7 +126,8 @@ cleanup() {
     local rc=$?
     trap - EXIT
     set +e
-    write_report "$rc"
+    # Only root may write the report (a run without sudo stops before changing anything).
+    ((EUID != 0)) || write_report "$rc"
     [[ -z $REPORT_NOTES ]] || { upload_report; rm -f -- "$REPORT_NOTES"; }
     [[ -z $WORK ]] || rm -rf -- "$WORK"
     [[ -z $PRIVATE_CONF ]] || rm -f -- "$PRIVATE_CONF"
@@ -172,7 +174,7 @@ parse_setup() {
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
           OPERATOR_USER|TAILSCALE_AUTH_KEY|ENABLE_VNC|VNC_PASSWORD|\
           STARLINK_ADDRESS|STARLINK_SNOW_MELT|EMERGENCY_SECONDS|DISABLE_SLEEP|\
-          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|REBOOT_AFTER|LOCATION|RUN_LIMIT_SECONDS|\
+          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|REBOOT_AFTER|LOCATION|RUN_LIMIT_SECONDS|INSTALL_EMAIL_DETAILS|\
           EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|NETWORK_WAIT_SECONDS|\
           UPLOAD_TEST|EMAIL_TEST) ;;
           *) fail "Unknown setup key: $key" ;;
@@ -397,7 +399,7 @@ validate_setup() {
     node_key STARLINK_ADDRESS "$(get STARLINK_ADDRESS 192.168.100.1:9200)" || fail 'Invalid Starlink address'
     local key
     for key in ENABLE_VNC DISABLE_SLEEP UPLOAD_TEST EMAIL_TEST \
-               SYSTEM_UPGRADE DISABLE_AUTO_UPDATES AUTOLOGIN REBOOT_AFTER; do
+               SYSTEM_UPGRADE DISABLE_AUTO_UPDATES AUTOLOGIN REBOOT_AFTER INSTALL_EMAIL_DETAILS; do
         [[ $(get "$key" yes) =~ ^(yes|no)$ ]] || fail "$key must be yes/no"
     done
     [[ $(get STARLINK_SNOW_MELT read) =~ ^(read|off)$ ]] || fail 'STARLINK_SNOW_MELT must be read/off'
@@ -919,6 +921,7 @@ check_connections() {
         fi
         if [[ $(get EMAIL_TEST yes) == yes ]]; then
             RUN_MODE=check
+            INSTALL_DETAILS=$(installation_details)
             if send_notification INSTALLATION_CHECK; then
                 note OK "Test email sent to $EMAIL_TO"
             else
@@ -927,6 +930,18 @@ check_connections() {
             fi
         fi
     )
+}
+installation_details() {
+    # One place for what the technician needs to know about this unit. It goes
+    # only into the installation email (INSTALL_EMAIL_DETAILS=no turns it off).
+    [[ $(get INSTALL_EMAIL_DETAILS yes) == yes ]] || return 0
+    local ts_ip pw
+    ts_ip=$(timeout 20 tailscale ip -4 2>/dev/null | head -n1 || true)
+    pw=${OPERATOR_PASSWORD:-}
+    [[ -n $pw ]] || pw='(not changed by the installer)'
+    printf 'Station:   %s\nLocation:  %s\nComputer:  %s\nAccount:   %s\nPassword:  %s\nTailscale: %s\nRevision:  %s\n' \
+        "$(get station)" "${LOCATION:-not set}" "$(hostname)" "$USER_NAME" "$pw" "${ts_ip:-not online}" "${SHA:0:7}"
+    [[ -z $ts_ip ]] || printf 'Log in:    ssh %s@%s\n' "$USER_NAME" "$ts_ip"
 }
 check_starlink() {
     if [[ $(get STARLINK_SNOW_MELT read) == off ]]; then
@@ -953,12 +968,16 @@ schedule_reboot() {
     # restart. Never after a failure, and never when field mode was just
     # enabled (that boot would run a field cycle and power the computer off).
     [[ $(get REBOOT_AFTER yes) == yes && $ENABLE_FIELD != yes ]] || return 0
-    shutdown -r +1 'TELE installation finished: restarting to apply the new account and automatic login' ||
-        { note WARN 'Could not schedule the restart; restart by hand: sudo reboot'; return 0; }
+    # The desktop session of the person running the installer blocks a plain
+    # shutdown ("active block inhibitor"), so a one-shot timer runs the restart
+    # with -i (ignore inhibitors).
+    systemctl stop tele-install-reboot.timer >/dev/null 2>&1 || true
+    systemd-run --quiet --unit=tele-install-reboot --on-active=60s systemctl reboot -i ||
+        { note WARN 'Could not schedule the restart; restart by hand: sudo systemctl reboot -i'; return 0; }
     REBOOT_SCHEDULED=yes
-    note OK 'Restart scheduled in one minute (cancel with: sudo shutdown -c)'
+    note OK 'Restart scheduled in one minute (cancel with: sudo systemctl stop tele-install-reboot.timer)'
     say 'The computer restarts in one minute to apply the new account and automatic login.'
-    say 'To cancel: sudo shutdown -c'
+    say 'To cancel: sudo systemctl stop tele-install-reboot.timer'
 }
 main() {
     while (($#)); do

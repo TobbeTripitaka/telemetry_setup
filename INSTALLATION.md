@@ -3317,13 +3317,22 @@ Check the dedicated password file, parent-directory traversal, virtual-desktop
 dependencies and startup script. Verify the Mac SSH tunnel before changing
 server settings; never fix a tunnel problem by exposing VNC publicly.
 
+### The installation email
+
+The test email sent at the end of the installation (status `INSTALLATION_CHECK`)
+also carries a "Setup details" block: station, location, computer name, account,
+the account PASSWORD, the Tailscale address and an `ssh` line, so everything
+about a new unit is in one place. It appears only in that one email, is never
+written to a log, and is not part of the daily status emails. Treat the mailbox
+as private, or set `INSTALL_EMAIL_DETAILS=no` in the setup file to leave the block out.
+
 ### Restart after installation
 
 A terminal that was open during the installation keeps showing the old account
 and computer name (`whoami` still says the old name): the change applies to new
 logins. With `REBOOT_AFTER=yes` (the default) the installer therefore schedules
 a restart one minute after a successful installation. Cancel it with
-`sudo shutdown -c`. It never restarts after a failure, and not when
+`sudo systemctl stop tele-install-reboot.timer`. It never restarts after a failure, and not when
 `--enable-field` is used, because that boot would run a field cycle and power
 the computer off. Set `REBOOT_AFTER=no` to restart by hand.
 

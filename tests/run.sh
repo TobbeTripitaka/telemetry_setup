@@ -337,6 +337,20 @@ test_location_label_in_email_and_validation() {
     load_node_config "$STATE_ROOT/node.conf"
     [[ $LOCATION == 'Carey Ntk' ]]
 }
+test_installation_email_lists_setup_details_only_for_the_install_check() {
+    mkdir -p "$BASE/fakebin3"
+    printf '#!/usr/bin/env bash\nwhile (($#)); do [[ $1 == --upload-file ]] && cp -- "$2" "%s/mail3.txt"; shift; done\n' "$BASE" >"$BASE/fakebin3/curl"
+    chmod +x "$BASE/fakebin3/curl"
+    EMAIL_TO=a@example.com EMAIL_FROM=b@example.com EMAIL_PASSWORD=secretsecret1234
+    HARVEST_MODE=incremental EXECUTE=auto MAINTENANCE_IDLE_SECONDS=600 LOCATION=''
+    INSTALL_DETAILS=$'Account:   cad1\nPassword:  p4ss word'
+    PATH="$BASE/fakebin3:$PATH" send_notification INSTALLATION_CHECK
+    grep -q '^Setup details' "$BASE/mail3.txt"; grep -q '^Password:  p4ss word' "$BASE/mail3.txt"
+    PATH="$BASE/fakebin3:$PATH" send_notification SUCCESS
+    ! grep -q 'p4ss' "$BASE/mail3.txt"
+    ! grep -q 'p4ss' "$LOG_FILE"
+    unset INSTALL_DETAILS
+}
 test_run_limit_stops_network_calls() {
     uptime_seconds() { echo 5000; }
     RUN_DEADLINE=4000 expect_failure source_timeout 30 true

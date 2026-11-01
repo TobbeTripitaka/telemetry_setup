@@ -116,7 +116,7 @@ This folder holds PASSWORDS (setup.conf). Do not email, upload or share it.
 4. If it stops with an ERROR, fix what it says and run the same command again.
    It is safe to repeat. If you cannot fix it, send the text of the ERROR line.
 5. When it says "Installed TELE revision ...", the computer restarts by itself after
-   one minute (cancel with: sudo shutdown -c). It then logs in by itself as the new
+   one minute (cancel with: sudo systemctl stop tele-install-reboot.timer). It then logs in by itself as the new
    account. Log in over SSH or at the screen as that account and run:
 
        sudo /opt/tele/current/tele.sh --check

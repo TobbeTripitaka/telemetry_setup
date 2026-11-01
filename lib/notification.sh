@@ -60,6 +60,9 @@ send_notification() {
         printf 'MIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n'
         printf 'Station: %s\nLocation: %s\nRun: %s\nStatus: %s\nMode: %s\nPending/incomplete batches: %s\n' \
             "$STATION_NAME" "${LOCATION:-not set}" "$RUN_ID" "$status" "$HARVEST_MODE" "$pending"
+        if [[ $status == INSTALLATION_CHECK && -n ${INSTALL_DETAILS:-} ]]; then
+            printf '\nSetup details (keep this email private)\n%s\n\n' "$INSTALL_DETAILS"
+        fi
         printf 'Local data: %s; free disk: %s MiB\n' "${LOCAL_DATA:-keep}" "$(free_mib 2>/dev/null || echo unknown)"
         printf 'Dropbox: %s\nPost-run mode: %s\nIdle maintenance window: %ss\n' \
             "$REMOTE_BASE" "$EXECUTE" "$MAINTENANCE_IDLE_SECONDS"

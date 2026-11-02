@@ -109,6 +109,21 @@ test_installation_details_lists_name_password_location() {
     SETUP[INSTALL_EMAIL_DETAILS]=no
     [[ -z $(installation_details) ]]
 }
+test_dns_backup_writes_drop_in_only_when_resolved_is_active() {
+    source "$ROOT/INSTALL.sh"
+    RESOLVED_DIR="$BASE/resolved.d"; local calls="$BASE/dns-calls"; : >"$calls"
+    REPORT_NOTES="$BASE/dns-notes"; : >"$REPORT_NOTES"
+    declare -gA SETUP=()
+    systemctl() { echo "systemctl $*" >>"$calls"; [[ $1 != is-active ]]; }
+    dns_backup >/dev/null
+    [[ ! -e $RESOLVED_DIR/tele-dns.conf ]] && grep -q 'not active' "$REPORT_NOTES"
+    systemctl() { echo "systemctl $*" >>"$calls"; }
+    dns_backup >/dev/null
+    grep -q '^DNS=1.1.1.1 9.9.9.9' "$RESOLVED_DIR/tele-dns.conf"
+    grep -q 'systemctl restart systemd-resolved' "$calls"
+    declare -gA SETUP=([DNS_BACKUP]=no); rm -f "$RESOLVED_DIR/tele-dns.conf"
+    dns_backup >/dev/null; [[ ! -e $RESOLVED_DIR/tele-dns.conf ]]
+}
 test_unknown_option_fails() {
     if bash "$ROOT/INSTALL.sh" --nonsense >"$BASE/error" 2>&1; then return 1; fi
 }
@@ -432,7 +447,7 @@ test_harvester_version_check_ignores_exit_status() {
 test_services_without_vnc_do_not_install_or_check_the_vnc_unit() {
     source "$ROOT/INSTALL.sh"
     SOURCE=$ROOT WORK="$BASE/svc-work"; mkdir -p "$WORK"
-    UNIT_DIR="$BASE/units-novnc"
+    UNIT_DIR="$BASE/units-novnc" SBIN_DIR="$BASE/sbin"
     declare -gA SETUP=([ENABLE_VNC]=no)
     local calls="$BASE/svc-calls"
     systemctl() { echo "systemctl $*" >>"$calls"; }
@@ -446,7 +461,7 @@ test_services_without_vnc_do_not_install_or_check_the_vnc_unit() {
 test_services_remove_a_stale_vnc_unit_when_vnc_is_off() {
     source "$ROOT/INSTALL.sh"
     SOURCE=$ROOT WORK="$BASE/svc-work2"; mkdir -p "$WORK"
-    UNIT_DIR="$BASE/units-stale"; mkdir -p "$UNIT_DIR"
+    UNIT_DIR="$BASE/units-stale" SBIN_DIR="$BASE/sbin"; mkdir -p "$UNIT_DIR"
     : >"$UNIT_DIR/tele-vnc@.service"
     declare -gA SETUP=([ENABLE_VNC]=no)
     systemctl() { :; }; systemd-analyze() { :; }
@@ -456,7 +471,7 @@ test_services_remove_a_stale_vnc_unit_when_vnc_is_off() {
 test_services_with_vnc_install_and_check_the_vnc_unit() {
     source "$ROOT/INSTALL.sh"
     SOURCE=$ROOT WORK="$BASE/svc-work3"; mkdir -p "$WORK"
-    UNIT_DIR="$BASE/units-vnc"
+    UNIT_DIR="$BASE/units-vnc" SBIN_DIR="$BASE/sbin"
     declare -gA SETUP=([ENABLE_VNC]=yes [VNC_PASSWORD]=abcd1234)
     USER_NAME=$(id -un)
     local calls="$BASE/svc-calls3"

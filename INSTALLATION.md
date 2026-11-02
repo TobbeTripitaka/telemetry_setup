@@ -9,7 +9,7 @@ This guide brings together the hardware, suppliers, photographs and software
 setup I use. I've included the practical details so that another station can
 be built without having to work out the same things again.
 
-**Updated:** 2 November 2026. The software covered here is `4.1.0`.
+**Updated:** 2 November 2026. The software covered here is `4.1.1`.
 Record the exact code revision used for testing as described in the installation section.
 
 > **Testing is still in progress.** Please contact me before using this update
@@ -1405,7 +1405,7 @@ day's log file (for example `Z9.0496..LOG.D.2023.344.txt`, 111 bytes against
 34063 bytes) into the next day's export. A log or other non-waveform file with
 different content is therefore uploaded under a second name,
 `<native name>.conflict-<day>`, the run logs a warning, and the list is saved
-as `tele_logfiles/receipts/<serial>/<day>.conflicts.txt`, sent together with the day's other receipts in a single transfer. The Harvester
+as `pegasus_harvester/<serial>/tele_logfiles/<day>.conflicts.txt`, sent together with the day's other receipts in a single transfer. The Harvester
 repeats the same fragment in every later daily export; a second version that
 is identical to one already uploaded is not uploaded again, and a day with
 nothing new is acknowledged locally without any Dropbox traffic. Waveform files (the
@@ -1702,10 +1702,13 @@ my_dropbox_path/
     station01/
       config.txt
       pegasus_harvester/
-        <native Harvester paths, unchanged>
+        <recorder_serial>/
+          <native Harvester paths, unchanged: 2023/Z9/DR1A/HHE.D/..., logs/..., soh/...>
+          tele_logfiles/              (telemetry logs belonging to this recorder's data)
+            <day>.json, <day>.dropbox.sum, <day>.harvest.log, <day>.conflicts.txt
+            instrument/<serial>_<UTC>_digitizer-info.txt   (one per run)
       tele_logfiles/
-        <run logs and diagnostics>
-        receipts/<recorder_serial>/   (per day: json, dropbox.sum, harvest.log)
+        <run logs and diagnostics of the computer>
       <future_extension>/
     station02/
       config.txt
@@ -2790,9 +2793,12 @@ stopping services or editing a running installation.
 Select a maintenance mode before the run if access is needed, and remember that
 the emergency timer still takes priority.
 
-`systemctl stop tele.service` can trigger its poweroff action. It is not a pause
-button, and removing `FIELD_ENABLED` does not cancel an already running service
-or timer. Test these behaviours with physical access before relying on them remotely.
+Poweroff happens only while `/etc/tele/FIELD_ENABLED` exists. Both the field
+service and the emergency timer check it at the moment they would power off, so
+`sudo tele-maintenance on` (which removes the file) keeps the computer on even in
+the middle of a run. Plain `systemctl disable` is not enough: it only changes what
+starts at the next boot, and an already running service or armed timer still
+powers the computer off. See "Start the computer and keep it on for upgrades".
 
 ### Before the first poweroff-capable run
 
@@ -2889,18 +2895,13 @@ already running instance; plan maintenance/disarming from a controlled state.
 
 ### Returning to a non-field bench state
 
-When the collector is not running and physical access is available, an
-administrator can remove the activation marker and disable automatic starts.
-Do not interpret removing the marker alone as cancelling an already armed timer.
-
 ```bash
 # Run on: Ubuntu station.
-# Only in a controlled maintenance state, with no active collection:
-sudo rm -f /etc/tele/FIELD_ENABLED
-sudo systemctl disable tele.service tele-power-guard.timer
-sudo systemctl stop tele-power-guard.timer
+sudo tele-maintenance on
 ```
 
+This removes the activation marker and disables the automatic starts. It works at
+any time, also during a run. Arm field mode again with `sudo tele-maintenance off`.
 Without the guard, the computer and Starlink may remain powered. Do not leave
 this bench configuration on a battery-powered remote site.
 
@@ -3360,6 +3361,14 @@ A pending batch that fails its own integrity check (for example after a power cu
 at the wrong moment) is moved to `quarantine/` in the station's state folder and
 the day is exported again, so one damaged batch can never block a recorder.
 
+A transfer that fails because the link drops out is not the end of the run: the
+script waits (up to four minutes) until Dropbox answers again and retries, up to
+three attempts per day. Files that already arrived are skipped by their hash, so
+only the missing ones are sent. The installer also adds two public DNS servers
+(1.1.1.1 and 9.9.9.9) as extra upstream resolvers, because the Starlink resolver
+can stop answering for minutes (`lookup ... i/o timeout` in the log); set
+`DNS_BACKUP=no` to leave DNS untouched.
+
 Nothing is lost when a run is cut short: a day that cannot be verified stays
 pending locally and is retried at the next boot, and the first failed upload ends
 that source's cycle at once instead of retrying every remaining day. Each day uses
@@ -3367,6 +3376,106 @@ as few Dropbox round trips as possible: one copy, one verification and one
 receipt transfer; a day with nothing new (for example the repeated log fragment)
 needs none. The installer itself has no time limit: it retries packages and
 downloads several times and runs until it is done.
+
+### Logging in over a poor link
+
+Over Starlink and Tailscale, plain SSH can feel frozen when packets are lost or
+delayed, and only the escape sequence `~.` closes it. Check the path first with
+`tailscale ping <unit>` on your computer: `direct` is best, `via DERP` means a
+slower relay. For a shaky link use **mosh**, which survives loss and roaming; the
+installer puts it on the unit, and on a Mac you add it with `brew install mosh`:
+
+```bash
+# Run on: your Mac, with the unit online in Tailscale (example account and address).
+mosh cad1@100.64.0.1
+```
+
+Plain SSH can also be made more tolerant with
+`ssh -o ServerAliveInterval=15 -o ServerAliveCountMax=8 <account>@<tailscale address>`.
+
+### Start the computer and keep it on for upgrades
+
+A field unit wakes from the BIOS clock, runs for a while and powers off. To work on
+it:
+
+1. Switch it on: press the power button (or wait for the BIOS wake time). If the
+   unit is powered through the USB relay, make sure the relay is on.
+2. It logs in by itself, connects, and starts its run. The run is limited
+   (`RUN_LIMIT_SECONDS`, 2 hours by default) and an emergency timer powers the
+   computer off 4 hours after boot.
+3. As soon as you can log in (SSH over Tailscale, preferably `mosh cad2@<tailscale ip>`
+   on a shaky link; the account name is the station name), run:
+
+```bash
+# Run on: Ubuntu station.
+sudo tele-maintenance on
+```
+
+   From now on nothing powers the computer off, not the run in progress, not the
+   emergency timer. If you must log in before the run ends, it is safe to do this at
+   any moment. With `EXECUTE=ssh` in the Dropbox `config.txt` the run also waits for
+   you. The computer powers off by itself only if you log in too late (after the
+   4 hour limit), so do it early.
+4. Upgrade or test as needed (for example `sudo bash INSTALL.sh --enable-field`
+   after an upgrade also arms field mode).
+5. When finished, arm field mode and shut down yourself:
+
+```bash
+# Run on: Ubuntu station.
+sudo tele-maintenance off
+sudo tele-maintenance status
+sudo poweroff
+```
+
+`tele-maintenance off` arms the NEXT boot; it does not power off the computer now.
+`sudo tele.sh --status` and `tele-maintenance status` show whether field mode is
+armed.
+
+### Where is everything?
+
+`sudo /opt/tele/current/tele.sh --status` prints a tidy overview (read-only, no
+network) with the station, mode, free disk, the latest run log, and for each
+recorder how many days are waiting, uploaded and kept locally. The layout behind it:
+
+```text
+/opt/tele/current/                      the code (a symbolic link to the active release)
+/etc/tele/                              settings: config.txt, node.conf, credentials.txt
+/var/log/tele/<station>/                one log file per run (the email shows the tail)
+/var/lib/tele/<station>/sources/<recorder serial>/
+    pending/<day>/files/...             exported, not yet verified in Dropbox
+    verified/<day>.json                 receipt that the day is verified in Dropbox
+    kept/<day>/files/<native paths>     local copy of verified days (LOCAL_DATA=keep)
+    kept/<day>/{harvest.log,dropbox.sum,receipt.json,...}   what the export said
+    owners/<hash>                       bookkeeping, one record per uploaded file
+    quarantine/                         damaged batches that were set aside
+```
+
+In Dropbox the recorder's data and the telemetry logs about that data sit together:
+
+```text
+tele/<station>/pegasus_harvester/<recorder serial>/
+    2023/Z9/DR1A/HHE.D/Z9.DR1A..HHE.D.2023.344     waveforms (native paths)
+    logs/2023/Z9/DR1A/LOG.D/...                    recorder log files (native)
+    soh/2023/Z9/DT3A/VCO.D/...                     state of health (native)
+    tele_logfiles/<day>.json, .dropbox.sum, .harvest.log, .conflicts.txt
+    tele_logfiles/instrument/<serial>_<UTC>_digitizer-info.txt
+tele/<station>/tele_logfiles/                      run logs of the computer
+```
+
+The run log has one line for each uploaded day, for example
+`Verified in Dropbox: 2023-12-29 (data 3, logs 5, soh 0, other 0; 40 MiB, 30 s)`.
+`soh 0` means that the Harvester exported no state-of-health files for that day.
+The Harvester command line writes data, logs and SOH files but not the StationXML
+files (`Z9.DT1A_20240111T031232Z.xml`) that the Harvester application creates; the
+instrument information that the recorder reports is saved in the
+`instrument/` folder above instead.
+
+The empty folders `pending/`, `verified/`, `owners/` and `kept/` directly under
+`/var/lib/tele/<station>/` belong to an older single-recorder layout and are unused
+when the recorder is found automatically. Folders of a station name used earlier
+(for example `tele10`) stay until you delete them; they are not used any more.
+In Dropbox the same data is under `tele/<station>/pegasus_harvester/<recorder serial>/`
+in the Harvester's own year/network/station/channel folders.
 
 ### The installation report
 

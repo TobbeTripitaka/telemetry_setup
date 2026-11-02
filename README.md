@@ -54,13 +54,22 @@ remote access and testing instructions. Start there if you are building a statio
    `INSTALL-REPORT.txt`, sends you a setup email and restarts the computer.
 3. **After the restart:** `sudo /opt/tele/current/tele.sh --check`, then a real bench
    run with `sudo /opt/tele/current/tele.sh --once`.
-4. **Field activation** (the computer then powers off after every run):
+4. **Keep a unit on for upgrades:** switch it on, log in (mosh/SSH) and run
+   `sudo tele-maintenance on`; arm again with `sudo tele-maintenance off`
+   ([details](INSTALLATION.md#start-the-computer-and-keep-it-on-for-upgrades)).
+5. **Field activation** (the computer then powers off after every run):
    `sudo bash INSTALL.sh --enable-field`, then check BIOS wake and the USB relay
    physically.
 
 Details and every setting: [INSTALLATION.md](INSTALLATION.md#ship-a-ready-to-run-bundle-recommended).
 To move a unit that already has data to a new station name, see
 [the rename step](INSTALLATION.md#rename-a-station-that-already-holds-data).
+
+## Where is everything?
+
+Run `sudo /opt/tele/current/tele.sh --status` for a read-only overview: what is
+waiting, what is uploaded and where each recorder's files are. The full layout is
+in [INSTALLATION.md](INSTALLATION.md#where-is-everything).
 
 ## Limits that protect the battery
 
@@ -134,10 +143,12 @@ Each station has its own directory and configuration:
 <dropbox_root>/tele/<station_name>/
   config.txt
   pegasus_harvester/
-    <native Harvester directories and filenames>
+    <recorder_serial>/
+      <native Harvester paths: 2023/..., logs/2023/..., soh/2023/...>
+      tele_logfiles/              (telemetry logs of this recorder: <day>.json, .harvest.log, ...)
+        instrument/               (digitizer-info, one file per run)
   tele_logfiles/
-    <run logs and diagnostics>
-    receipts/<recorder_serial>/   (per day: json, dropbox.sum, harvest.log)
+    <run logs and diagnostics of the computer>
   <future_extension>/
 ```
 
@@ -383,5 +394,5 @@ If you build a station or find something that can be improved, please get in
 touch or open an issue in this repository. I would like to keep the setup
 practical, easy to understand and reliable enough to leave in the field.
 
-Software: `4.1.0`. Documentation updated: 2 November 2026. Record the Git revision as well.
+Software: `4.1.1`. Documentation updated: 2 November 2026. Record the Git revision as well.
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## 4.1.1 (November 2026)
+- `sudo tele-maintenance on|off|status` keeps the computer on for upgrades at any
+  moment, also in the middle of a run. The poweroff steps of `tele.service`,
+  `tele-poweroff.service` and the emergency timer now act only while
+  `/etc/tele/FIELD_ENABLED` exists; `systemctl disable` alone never stopped an
+  armed run.
+- The telemetry logs of a recorder (receipts, harvest log, conflict lists) are now in
+  `pegasus_harvester/<serial>/tele_logfiles/`, next to its data; one
+  `instrument/<serial>_<UTC>_digitizer-info.txt` is saved per run. Run logs of the
+  computer stay in `tele/<station>/tele_logfiles/`.
+- The per-day log line counts data, logs and soh files, so a missing SOH export is
+  visible.
+- `tele.sh --status`: a read-only overview of the data folders, days waiting, uploaded
+  and kept, the latest log and the Dropbox path; the layout is documented.
+- The log line for each uploaded day shows files, MiB and seconds, so a slow link can
+  be told from a big day.
+- Four parallel Dropbox transfers and checks instead of two: on a link with high
+  latency the time per day drops roughly in proportion.
+- A transfer that fails because the link drops out now waits for Dropbox to return
+  (up to four minutes, three attempts) and resumes with the files still missing,
+  instead of ending the run. A dead link still ends the run at the usual limits.
+- The installer adds backup DNS servers (1.1.1.1, 9.9.9.9) for links whose own
+  resolver drops out (`DNS_BACKUP=no` to skip).
+- The installer adds `mosh` for logins over a shaky link.
+
 ## 4.1.0 (November 2026)
 
 Installer and bundle

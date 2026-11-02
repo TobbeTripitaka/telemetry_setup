@@ -1,6 +1,8 @@
 [Unit]
 Description=TELE emergency power off
 DefaultDependencies=no
+# Same rule as tele.service: only while field mode is armed (`tele-maintenance on` disarms it).
+ConditionPathExists=/etc/tele/FIELD_ENABLED
 
 [Service]
 Type=oneshot

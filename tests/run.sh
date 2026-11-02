@@ -22,13 +22,14 @@ setup_test() {
     station=test-station STATION_NAME=test-station
     NETWORK_TIMEOUT_SECONDS=10
     PEGASUS_BIN="$ROOT/tests/fake-harvester.sh" DEVICE=/dev/never-used CLOCK_PRESENT=no
-    HARVEST_USED_SECONDS=0 FAULT=none
+    HARVEST_USED_SECONDS=0 FAULT=none UPLOAD_ATTEMPTS=1
     export MOCK_HARVEST_MODE=ok
 }
 
 cloud() {
     printf '%s\n' "$*" >>"$STATE_ROOT/cloud-calls"
     if [[ $FAULT == copy && $1 == copy ]]; then return 9; fi
+    if [[ $FAULT == flaky && $1 == copy && ! -e $STATE_ROOT/flaky-done ]]; then : >"$STATE_ROOT/flaky-done"; return 9; fi
     if [[ $FAULT == check && $1 == check && $3 == "$REMOTE_DATA" ]]; then return 9; fi
     if [[ $FAULT == receipt && $1 == copy && $2 == *receipt-out* ]]; then return 9; fi
     timeout -k 1 10 rclone --config /dev/null "$@" --retries 1 --low-level-retries 1 \
@@ -369,6 +370,20 @@ test_run_limit_stops_network_calls() {
     runtime_key RUN_LIMIT_SECONDS 7200
     unset RUN_DEADLINE
 }
+test_status_overview_names_folders_and_counts_days() {
+    local root="$BASE/st/cad2" src
+    src="$root/sources/SER1"
+    mkdir -p "$src/pending/2025-01-02/files" "$src/verified" "$src/kept/2025-01-01/files" "$src/owners" "$BASE/st/old" "$root/pending"
+    printf 'x' >"$src/pending/2025-01-02/files/a"; printf '{}' >"$src/verified/2025-01-01.json"; printf 'y' >"$src/kept/2025-01-01/files/b"
+    STATE_ROOT=$root LOG_ROOT="$BASE/st-logs" STATION_NAME=cad2 LOCATION="Mt Brown" REMOTE_BASE=r:telemetry/tele/cad2
+    mkdir -p "$LOG_ROOT"; : >"$LOG_ROOT/run1.log"
+    local text; text=$(status_report)
+    [[ $text == *'station cad2 (Mt Brown)'* && $text == *'Recorder SER1'* ]]
+    [[ $text == *'Waiting   1 day(s)'* && $text == *'from 2025-01-02 to 2025-01-02'* ]]
+    [[ $text == *'Uploaded  1 day(s) verified in Dropbox, 2025-01-01 to 2025-01-01'* ]]
+    [[ $text == *'Local copy 1 day(s)'* && $text == *'run1.log'* && $text == *'earlier name'* ]]
+    [[ ! -e $root/quarantine ]]    # read-only: nothing was created
+}
 test_open_day_update_rewrites_claim() {
     mkdir "$STATE_ROOT/a"
     printf one >"$STATE_ROOT/a/day.mseed"
@@ -581,6 +596,26 @@ test_incremental_skip_verified_old() {
     PEGASUS_BIN=/nonexistent
     harvest_cycle
 }
+test_flapping_link_upload_waits_and_resumes() {
+    batch
+    verify_remote() { return 0; }
+    sleep() { :; }
+    FAULT=flaky UPLOAD_ATTEMPTS=3
+    upload_with_retry "$SPOOL/2025-01-01"
+    [[ -f $VERIFIED/2025-01-01.json && ! -d $SPOOL/2025-01-01 ]]
+    grep -q 'waiting for the connection' "$LOG_FILE"
+    grep -q 'Connection is back' "$LOG_FILE"
+}
+test_dead_link_gives_up_and_keeps_the_batch() {
+    batch
+    verify_remote() { return 1; }
+    sleep() { :; }
+    uptime_seconds() { echo $((SECONDS * 100)); }
+    FAULT=copy UPLOAD_ATTEMPTS=3
+    expect_failure upload_with_retry "$SPOOL/2025-01-01"
+    [[ -d $SPOOL/2025-01-01 && ! -f $VERIFIED/2025-01-01.json ]]
+    grep -q 'did not return in time' "$LOG_FILE"
+}
 test_damaged_pending_batch_is_set_aside_not_blocking() {
     batch
     printf 'damaged\n' >>"$SPOOL/2025-01-01/READY"
@@ -662,6 +697,39 @@ test_log_retry_from_older_run() {
     printf 'old diagnostic\n' >"$LOG_ROOT/previous-run.log"
     snapshot_log
     [[ $(<"$REMOTE_BASE/tele_logfiles/previous-run.log") == 'old diagnostic' ]]
+}
+test_receipts_sit_next_to_the_recorder_data() {
+    batch
+    upload_batch "$SPOOL/2025-01-01"
+    [[ -f $REMOTE_DATA/tele_logfiles/2025-01-01.json ]]
+    [[ ! -e $REMOTE_BASE/tele_logfiles/receipts ]]
+}
+test_day_log_line_counts_data_logs_and_soh() {
+    local root="$STATE_ROOT/kinds"
+    mkdir -p "$root/2025/XX/TEST/BHZ.D" "$root/logs/2025/XX/TEST/LOG.D" "$root/soh/2025/XX/TEST/VCO.D"
+    : >"$root/2025/XX/TEST/BHZ.D/a"; : >"$root/2025/XX/TEST/BHZ.D/b"
+    : >"$root/logs/2025/XX/TEST/LOG.D/c"; : >"$root/x.xml"
+    [[ $(count_file_kinds "$root") == 'data 2, logs 1, soh 0, other 1' ]]
+}
+test_instrument_info_saved_once_per_run() {
+    RECORDER_SERIAL=SN001
+    printf 'serial SN001\n' >"$LOG_ROOT/$RUN_ID-digitizer.txt"
+    upload_instrument_info
+    compgen -G "$REMOTE_DATA/tele_logfiles/instrument/SN001_*_digitizer-info.txt" >/dev/null
+}
+test_poweroff_follows_the_field_marker() {
+    grep -q 'FIELD_ENABLED' "$ROOT/systemd/tele.service"
+    grep -q '^ConditionPathExists=/etc/tele/FIELD_ENABLED' "$ROOT/systemd/tele-poweroff.service"
+}
+test_maintenance_script_toggles_the_marker() {
+    local etc="$STATE_ROOT/etc" fake="$STATE_ROOT/fakebin"
+    mkdir -p "$etc" "$fake"
+    printf '#!/bin/sh\nexit 0\n' >"$fake/systemctl"; chmod +x "$fake/systemctl"
+    : >"$etc/node.conf"; : >"$etc/config.txt"
+    PATH="$fake:$PATH" TELE_ETC_DIR="$etc" bash "$ROOT/scripts/tele-maintenance.sh" off >/dev/null
+    [[ -e $etc/FIELD_ENABLED ]]
+    PATH="$fake:$PATH" TELE_ETC_DIR="$etc" bash "$ROOT/scripts/tele-maintenance.sh" on >/dev/null
+    [[ ! -e $etc/FIELD_ENABLED ]]
 }
 test_volume_union_includes_soh_and_logs() {
     inspect_volumes

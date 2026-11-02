@@ -10,7 +10,9 @@ User=root
 UMask=0077
 Environment=TELE_FIELD_SERVICE=1
 ExecStart=/opt/tele/current/tele.sh --field
-ExecStopPost=/usr/bin/systemctl --no-block poweroff
+# Powers off only while field mode is armed, so `tele-maintenance on` can keep the computer
+# on even in the middle of a run (it removes the marker file).
+ExecStopPost=/bin/sh -c 'if [ -e /etc/tele/FIELD_ENABLED ]; then exec /usr/bin/systemctl --no-block poweroff; fi'
 KillMode=control-group
 TimeoutStopSec=20s
 Restart=no

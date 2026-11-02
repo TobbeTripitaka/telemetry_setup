@@ -127,6 +127,6 @@ source_timeout() {
 cloud() {
     source_timeout "$NETWORK_TIMEOUT_SECONDS" \
         rclone "$@" --contimeout 15s --timeout 45s --retries 2 \
-        --low-level-retries 3 --transfers 2 --checkers 2 \
+        --low-level-retries 3 --transfers 4 --checkers 4 \
         --dropbox-batch-mode sync
 }

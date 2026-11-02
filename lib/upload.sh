@@ -128,6 +128,27 @@ record_second_versions() {
     done <"$conflicts"
 }
 
+count_file_kinds() {
+    # "data 3, logs 5, soh 0, other 1": waveform files sit under a year folder,
+    # logs under logs/, state-of-health under soh/; a 0 for soh is worth a look.
+    local root=$1 data logs soh total
+    total=$(find "$root" -type f | wc -l)
+    data=$(find "$root" -type f -path "$root/[0-9][0-9][0-9][0-9]/*" | wc -l)
+    logs=$(find "$root/logs" -type f 2>/dev/null | wc -l)
+    soh=$(find "$root/soh" -type f 2>/dev/null | wc -l)
+    printf 'data %s, logs %s, soh %s, other %s' "$data" "$logs" "$soh" "$((total - data - logs - soh))"
+}
+
+upload_instrument_info() {
+    # The Harvester CLI cannot write StationXML; keep what the recorder reports
+    # about itself next to its data, one file per run, named like the XML files.
+    local info="$LOG_ROOT/$RUN_ID-digitizer.txt" stamp
+    [[ -s $info ]] || return 0
+    stamp=$(date -u +%Y%m%dT%H%M%SZ)
+    cloud copyto "$info" "$REMOTE_DATA/tele_logfiles/instrument/${RECORDER_SERIAL}_${stamp}_digitizer-info.txt" \
+        >>"$LOG_FILE" 2>&1 || log "WARNING: instrument info not uploaded this time"
+}
+
 quarantine_batch() {
     local batch=$1 quarantine="$STATE_ROOT/quarantine" old
     mkdir -p -- "$quarantine" || return 0
@@ -138,7 +159,7 @@ quarantine_batch() {
 }
 
 upload_batch() {
-    local batch=$1 day force temp rel verify
+    local batch=$1 day force temp rel verify started=$SECONDS files_count size_bytes
     local conflicts=$batch/conflicts.txt skips=$batch/skips.txt
     if ! validate_batch "$batch"; then
         # A damaged batch must never block this recorder for good: set it aside
@@ -187,14 +208,17 @@ upload_batch() {
         cp -- "$batch/dropbox.sum" "$batch/receipt-out/$day.dropbox.sum" || return 1
         [[ ! -f $batch/harvest.log ]] || cp -- "$batch/harvest.log" "$batch/receipt-out/$day.harvest.log" || return 1
         [[ ! -s $conflicts ]] || cp -- "$conflicts" "$batch/receipt-out/$day.conflicts.txt" || return 1
-        cloud copy "$batch/receipt-out" "$REMOTE_BASE/tele_logfiles/receipts/$RECORDER_SERIAL" \
+        cloud copy "$batch/receipt-out" "$REMOTE_DATA/tele_logfiles" \
             --no-traverse --checksum >>"$LOG_FILE" 2>&1 || return 1
     fi
     # The acknowledgment is the LAST correctness-changing action.
     temp=$(mktemp "$VERIFIED/.$day.XXXXXX") || return 1
     cp -- "$batch/receipt.json" "$temp" || return 1
     atomic_install "$temp" "$VERIFIED/$day.json" || return 1
-    log "Verified in Dropbox: $day"
+    # How many files/MiB and how long: tells a slow link from a big day.
+    files_count=$(find "$batch/files" -type f | wc -l)
+    size_bytes=$(du -sb "$batch/files" | cut -f1)
+    log "Verified in Dropbox: $day ($(count_file_kinds "$batch/files"); $((size_bytes / 1048576)) MiB, $((SECONDS - started)) s)"
     retain_or_remove_batch "$batch" || return 1
 }
 
@@ -237,10 +261,39 @@ prune_kept() {
         log "WARNING: local storage still low (${free} MiB free) and no verified local copies remain to remove"
 }
 
+wait_for_dropbox() {
+    # Wait (bounded) for the connection to come back after a failed transfer.
+    local limit=$1 started
+    started=$(uptime_seconds)
+    while (( $(uptime_seconds) - started < limit )); do
+        # The collection and run deadlines still apply: stop at once when spent.
+        source_timeout 1 true || return 1
+        if verify_remote >/dev/null 2>&1; then return 0; fi
+        sleep 15
+    done
+    return 1
+}
+
+upload_with_retry() {
+    # A flapping link (Starlink dropping for minutes) must not end the whole run:
+    # on a failed transfer, wait for Dropbox to return and try again. Files that
+    # already arrived are skipped by their hash, so each attempt only finishes the rest.
+    local batch=$1 attempt max=${UPLOAD_ATTEMPTS:-3}
+    for ((attempt = 1; attempt <= max; attempt++)); do
+        if upload_batch "$batch"; then return 0; fi
+        [[ -d $batch ]] || return 1    # set aside as damaged: nothing to retry
+        ((attempt < max)) || break
+        log "Upload of $(basename -- "$batch") failed (attempt $attempt of $max); waiting for the connection"
+        wait_for_dropbox 240 || { log "The connection did not return in time"; return 1; }
+        log "Connection is back; retrying $(basename -- "$batch")"
+    done
+    return 1
+}
+
 drain_pending() {
     local batch name
     while IFS= read -r -d '' batch; do
-        upload_batch "$batch" || return 1
+        upload_with_retry "$batch" || return 1
     done < <(find "$SPOOL" -mindepth 1 -maxdepth 1 -type d -name '20??-??-??' -print0 | sort -z)
     # Scratch from an interrupted export is not a recoverable ready batch.
     # Preserve its diagnostic log but reclaim space; no acknowledgment was written.

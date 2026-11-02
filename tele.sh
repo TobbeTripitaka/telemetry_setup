@@ -4,12 +4,19 @@ set -Eeuo pipefail
 umask 077
 export TZ=UTC LC_ALL=C
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-for library in common config hardware harvest upload starlink notification remote sources workflow; do
+for library in common config hardware harvest upload starlink notification remote sources workflow status; do
     # shellcheck source=/dev/null
     source "$SCRIPT_DIR/lib/$library.sh"
 done
 
 main() {
+    # --status only reads: no lock, no network, safe while a service runs.
+    if [[ ${1:-} == --status ]]; then
+        [[ $EUID == 0 ]] || { die "Use sudo: the data folders are private to root"; return 1; }
+        load_node_config /etc/tele/node.conf && load_local_config /etc/tele/config.txt || return 1
+        set_station_paths && status_report
+        return "$?"
+    fi
     prepare_run "$@" || return "$?"
     [[ $RUN_MODE != help ]] || return 0
 

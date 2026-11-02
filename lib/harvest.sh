@@ -92,6 +92,7 @@ harvest_cycle() {
         printf '%s\n' "$start" >"$STATE_ROOT/earliest-seen"
         sync -f "$STATE_ROOT/earliest-seen" || return 1
     fi
+    upload_instrument_info
     overlap_floor=$(( (now / 86400 - OVERLAP_DAYS) * 86400 ))
     HARVEST_USED_SECONDS=0
     for ((cursor=start; cursor<end; cursor+=86400)); do
@@ -100,7 +101,7 @@ harvest_cycle() {
         day=$(date -u -d "@$cursor" +%F)
         ack="$VERIFIED/$day.json"
         # No new work while an earlier ready batch cannot be safely uploaded.
-        if [[ -d $SPOOL/$day ]]; then upload_batch "$SPOOL/$day" || return 1; fi
+        if [[ -d $SPOOL/$day ]]; then upload_with_retry "$SPOOL/$day" || return 1; fi
         if [[ -f $ack ]]; then
             jq -e --arg r "$RECORDER_SERIAL" \
                 '.schema==1 and .recorder==$r and (.closed==0 or .closed==1)' "$ack" >/dev/null || return 1
@@ -123,6 +124,6 @@ harvest_cycle() {
         disk_has_reserve || { die "Insufficient free space"; return 1; }
         log "Harvesting UTC day $day (native paths, 24-hour files)"
         harvest_day "$cursor" "$((cursor+86400))" "$request" "$force" "$remaining" || return 1
-        upload_batch "$SPOOL/$day" || return 1
+        upload_with_retry "$SPOOL/$day" || return 1
     done
 }

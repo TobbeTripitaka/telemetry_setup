@@ -29,7 +29,8 @@ export UCF_FORCE_CONFFOLD=1 APT_LISTCHANGES_FRONTEND=none PAGER=cat SYSTEMD_PAGE
 declare -gA SETUP=()
 APT_NO_AUTO_CONF=/etc/apt/apt.conf.d/99tele-no-automatic-updates
 UNIT_DIR=/etc/systemd/system
-GDM_DIR=/etc/gdm3 LIGHTDM_DIR=/etc/lightdm DCONF_DIR=/etc/dconf HOSTS_FILE=/etc/hosts HOME_BASE=/home
+SBIN_DIR=/usr/local/sbin
+RESOLVED_DIR=/etc/systemd/resolved.conf.d GDM_DIR=/etc/gdm3 LIGHTDM_DIR=/etc/lightdm DCONF_DIR=/etc/dconf HOSTS_FILE=/etc/hosts HOME_BASE=/home
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MODE=confirm MODE_SET=no CONFIG='' CONFIG_DIR='' PRIVATE_CONF='' BUNDLE=no
 REF=main SOURCE_DIR='' ENABLE_FIELD=no WORK='' CURRENT_STAGE=arguments
@@ -174,7 +175,7 @@ parse_setup() {
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
           OPERATOR_USER|TAILSCALE_AUTH_KEY|ENABLE_VNC|VNC_PASSWORD|\
           STARLINK_ADDRESS|STARLINK_SNOW_MELT|EMERGENCY_SECONDS|DISABLE_SLEEP|\
-          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|REBOOT_AFTER|LOCATION|RUN_LIMIT_SECONDS|START_DATE|INSTALL_EMAIL_DETAILS|\
+          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|REBOOT_AFTER|DNS_BACKUP|LOCATION|RUN_LIMIT_SECONDS|START_DATE|INSTALL_EMAIL_DETAILS|\
           EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|NETWORK_WAIT_SECONDS|\
           UPLOAD_TEST|EMAIL_TEST) ;;
           *) fail "Unknown setup key: $key" ;;
@@ -399,7 +400,7 @@ validate_setup() {
     node_key STARLINK_ADDRESS "$(get STARLINK_ADDRESS 192.168.100.1:9200)" || fail 'Invalid Starlink address'
     local key
     for key in ENABLE_VNC DISABLE_SLEEP UPLOAD_TEST EMAIL_TEST \
-               SYSTEM_UPGRADE DISABLE_AUTO_UPDATES AUTOLOGIN REBOOT_AFTER INSTALL_EMAIL_DETAILS; do
+               SYSTEM_UPGRADE DISABLE_AUTO_UPDATES AUTOLOGIN REBOOT_AFTER DNS_BACKUP INSTALL_EMAIL_DETAILS; do
         [[ $(get "$key" yes) =~ ^(yes|no)$ ]] || fail "$key must be yes/no"
     done
     [[ $(get STARLINK_SNOW_MELT read) =~ ^(read|off)$ ]] || fail 'STARLINK_SNOW_MELT must be read/off'
@@ -541,7 +542,7 @@ system_updates() {
     fi
 }
 install_packages() {
-    apt_install bash coreutils util-linux findutils grep sed gawk openssh-server \
+    apt_install bash coreutils util-linux findutils grep sed gawk openssh-server mosh \
         iproute2 procps usbutils file rsync tzdata dbus gnupg dconf-cli
     verified_deb https://github.com/rclone/rclone/releases/download/v1.75.2 \
         "rclone-v1.75.2-linux-$ARCH.deb" SHA256SUMS
@@ -657,10 +658,25 @@ set_autologin() {
         note WARN 'No GDM or LightDM found: automatic login was not configured'
     fi
 }
+dns_backup() {
+    # Starlink's own resolver drops out for minutes at a time ("lookup ... i/o timeout").
+    # Two public resolvers are added as extra upstream servers; the link's own stay in use.
+    [[ $(get DNS_BACKUP yes) == yes ]] || return 0
+    if ! systemctl is-active --quiet systemd-resolved; then
+        note WARN 'systemd-resolved is not active: backup DNS servers were not added'
+        return 0
+    fi
+    install -d -m 755 "$RESOLVED_DIR"
+    printf '%s\n' '# TELE: backup DNS servers for a link whose own resolver drops out.' \
+        '[Resolve]' 'DNS=1.1.1.1 9.9.9.9' >"$RESOLVED_DIR/tele-dns.conf"
+    systemctl restart systemd-resolved
+    note OK 'Backup DNS servers added (1.1.1.1, 9.9.9.9) for a link that drops out'
+}
 linux_settings() {
     set_computer_name
     set_operator_account
     set_autologin
+    dns_backup
     timedatectl set-timezone UTC
     if [[ $(timedatectl show -p CanNTP --value) == no ]]; then
         apt_install systemd-timesyncd
@@ -800,6 +816,8 @@ install_services() {
     for unit in "${units[@]}"; do
         install -m 644 "$SOURCE/systemd/$unit" "$UNIT_DIR/$unit"
     done
+    install -d -m 755 "$SBIN_DIR"
+    ln -sfn /opt/tele/current/scripts/tele-maintenance.sh "$SBIN_DIR/tele-maintenance"
     install -d -m 755 "$UNIT_DIR/tele.service.d" "$UNIT_DIR/tele-power-guard.timer.d"
     printf '[Service]\nRuntimeMaxSec=%ss\n' "$(get EMERGENCY_SECONDS 14400)" \
         >"$UNIT_DIR/tele.service.d/limit.conf"

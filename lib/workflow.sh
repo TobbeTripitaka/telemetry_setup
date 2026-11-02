@@ -2,7 +2,8 @@
 # Run lifecycle; collector-specific work belongs in modules/, not tele.sh.
 usage() {
     printf '%s\n' \
-        'Usage: tele.sh --check | --once | --field [--config-dir /etc/tele]' \
+        'Usage: tele.sh --check | --once | --field [--config-dir /etc/tele]   or   tele.sh --status' \
+        '  --status Show what is on this computer and where (read-only; no network).' \
         '  --check  Validate setup and inspect connections/devices; no exports, email or shutdown.' \
         '  --once   One real bench collection/upload/email run; no maintenance wait or shutdown.' \
         '  --field  Service-only run; systemd powers off on exit.' \

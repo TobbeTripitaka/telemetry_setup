@@ -75,6 +75,13 @@ harvest_cycle() {
         end=$(date -u -d "$TO_DATE" +%s)
         (( end <= (now / 86400 + 1) * 86400 )) || return 1
     fi
+    # START_DATE: do not collect the recorder's history from before this UTC day
+    # (a new station need not upload years of old data over a patchy link).
+    if [[ $HARVEST_MODE != range && -n ${START_DATE:-} ]]; then
+        local first
+        first=$(date -u -d "$START_DATE" +%s)
+        (( start >= first )) || start=$first
+    fi
     # Retention-window loss must be visible, never silently described as complete.
     if [[ -f $STATE_ROOT/earliest-seen ]]; then
         local previous

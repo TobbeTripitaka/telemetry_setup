@@ -75,17 +75,19 @@ send_notification() {
     } >"$mail"
     # Starlink may have only just come up: try three times before giving up, and
     # keep the reason (EMAIL_ERROR) so the installer and the log can show it.
-    local rc=0 attempt err="$dir/curl.err"
+    # (When Dropbox was already unreachable the link is down: one try, to save battery.)
+    local rc=0 attempt attempts=3 err="$dir/curl.err"
+    [[ ${CLOUD_READY:-yes} == yes ]] || attempts=1
     EMAIL_ERROR=''
-    for attempt in 1 2 3; do
+    for ((attempt = 1; attempt <= attempts; attempt++)); do
         rc=0
         timeout -k 5 60 curl --config "$auth" --silent --show-error --ssl-reqd \
             --url smtps://smtp.gmail.com:465 --mail-from "$EMAIL_FROM" --mail-rcpt "$EMAIL_TO" \
             --connect-timeout 15 --max-time 50 --upload-file "$mail" >>"$LOG_FILE" 2>"$err" || rc=$?
         [[ $rc != 0 ]] || break
         EMAIL_ERROR="curl status $rc: $(tail -n 1 "$err")"
-        log "Email attempt $attempt of 3 failed: $EMAIL_ERROR"
-        ((attempt == 3)) || sleep "${EMAIL_RETRY_SECONDS:-10}"
+        log "Email attempt $attempt of $attempts failed: $EMAIL_ERROR"
+        ((attempt == attempts)) || sleep "${EMAIL_RETRY_SECONDS:-10}"
     done
     rm -rf -- "$dir"
     [[ $rc == 0 ]]

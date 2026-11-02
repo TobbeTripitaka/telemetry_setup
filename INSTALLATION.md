@@ -9,7 +9,7 @@ This guide brings together the hardware, suppliers, photographs and software
 setup I use. I've included the practical details so that another station can
 be built without having to work out the same things again.
 
-**Updated:** 14 October 2026. The software covered here is `4.0.1`.
+**Updated:** 2 November 2026. The software covered here is `4.1.0`.
 Record the exact code revision used for testing as described in the installation section.
 
 > **Testing is still in progress.** Please contact me before using this update
@@ -2220,6 +2220,7 @@ rather than choosing a guessed upload folder. No configuration is executed as sh
 | `MAINTENANCE_IDLE_SECONDS` | `600` | Integer 0–3600; used only in SSH/VNC modes |
 | `HARVEST_BUDGET_SECONDS` | `3600` | Integer 1–3600; shared source-collection allowance, including device/network calls |
 | `NETWORK_TIMEOUT_SECONDS` | `300` | Integer 10–600; bound for each rclone operation |
+| `START_DATE` | Empty | A date like `2026-11-01`; incremental collection skips recorder history before this UTC day, so a new unit does not upload years of old data. Ignored in `range` mode |
 | `RUN_LIMIT_SECONDS` | `7200` | Integer 1800–21600; hard limit of one field run, in seconds since boot. Past it every network and harvester call fails at once and the run wraps up (log, email, power off); unfinished days resume at the next boot. Not used by the installer or bench runs |
 | `NETWORK_WAIT_SECONDS` | `1200` | Integer 0–3600; after boot, keep retrying Dropbox every 30 s while Starlink starts. Collection is skipped only if it is still unreachable after this wait |
 | `LOCAL_DATA` | `keep` | `keep` or `clean`; pending (not yet verified) days are never removed in either case. Legacy `RETAIN_LAST_BATCH=yes/no` maps to `keep`/`clean` |
@@ -3354,6 +3355,10 @@ Every field run is bounded so a poor link cannot drain the battery:
 4. The email is tried three times, ten seconds apart, and the reason of a failure
    is written to the log.
 5. `EMERGENCY_SECONDS` (default 14400, an extra timer) is the last resort.
+
+A pending batch that fails its own integrity check (for example after a power cut
+at the wrong moment) is moved to `quarantine/` in the station's state folder and
+the day is exported again, so one damaged batch can never block a recorder.
 
 Nothing is lost when a run is cut short: a day that cannot be verified stays
 pending locally and is retried at the next boot, and the first failed upload ends

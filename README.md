@@ -4,8 +4,20 @@ TELE collects data from seismic stations where power and internet
 access are limited. It runs on an Ubuntu edge computer connected to a Nanometrics
 Pegasus recorder and uses Starlink to upload data to Dropbox.
 
-The idea is simple: wake the computer, collect and upload the data, send a status
-email, then switch off again. Limit the up-time to save battery power and ensure that the teh computer powers down after completed tasks. The loggers continues recording while the computer is off, so there is no need to leave the computer and Starlink running.
+The idea is simple: the BIOS wakes the computer, it harvests the data from the
+recorder over USB, uploads it to Dropbox, sends a status email and switches off
+again. The recorder keeps recording while the computer is off, so neither the
+computer nor Starlink needs to run all the time.
+
+In order of importance:
+
+1. **The computer always switches off** after a bounded time, even when the
+   internet is poor, so the battery is not drained.
+2. **All data reaches Dropbox sooner or later.** Nothing is marked as done until
+   it is verified in Dropbox, and anything unfinished resumes at the next wake.
+3. **It keeps running unattended** and is maintainable: one installer, one status
+   email per run, and a settings file in Dropbox that the station reads at every
+   wake.
 
 The system has been running in Australia, and the Antarctic station has been
 transmitting data since February 2026. I am still testing this software update,
@@ -27,7 +39,46 @@ The full [installation and field deployment guide](INSTALLATION.md) includes
 the hardware choices, supplier links, photographs, Ubuntu setup, credentials,
 remote access and testing instructions. Start there if you are building a station.
 
-## Where to start
+## Quick start: one bundle per unit (recommended)
+
+1. **You (on your own computer):** fill in a setup file for the unit
+   ([`credentials.example.txt`](credentials.example.txt): Gmail app password,
+   Dropbox token, Tailscale key, computer name and password, optional location
+   label) and run `scripts/make-bundle.sh --setup unit.conf --deb Harvester.deb --encrypt`.
+   It produces one zip with the exact code, the settings and the Nanometrics package.
+2. **The technician:** puts the folder on the Desktop, connects the computer to the
+   internet (Starlink or a cable) and the recorder to USB, and runs
+   `sudo bash INSTALL.sh`. It can take a while on a poor connection; it retries and
+   runs until done. It sets the computer name, account, password and automatic
+   login, installs everything, checks the recorder, Dropbox and email, writes
+   `INSTALL-REPORT.txt`, sends you a setup email and restarts the computer.
+3. **After the restart:** `sudo /opt/tele/current/tele.sh --check`, then a real bench
+   run with `sudo /opt/tele/current/tele.sh --once`.
+4. **Field activation** (the computer then powers off after every run):
+   `sudo bash INSTALL.sh --enable-field`, then check BIOS wake and the USB relay
+   physically.
+
+Details and every setting: [INSTALLATION.md](INSTALLATION.md#ship-a-ready-to-run-bundle-recommended).
+To move a unit that already has data to a new station name, see
+[the rename step](INSTALLATION.md#rename-a-station-that-already-holds-data).
+
+## Limits that protect the battery
+
+A field run is bounded at several levels; the first one reached ends the work and
+the computer powers off. Unfinished days stay pending and resume at the next wake.
+
+| Limit | Default | What it bounds |
+|---|---|---|
+| `NETWORK_WAIT_SECONDS` | 20 min | Waiting for Starlink and Dropbox after boot |
+| `HARVEST_BUDGET_SECONDS` | 1 h | Exporting and uploading, shared by all recorders |
+| `RUN_LIMIT_SECONDS` | 2 h after boot | The whole run: past it no network or harvester call starts |
+| `EMERGENCY_SECONDS` | 4 h after boot | Separate systemd timer that powers off no matter what |
+| `START_DATE` | none | Skips recorder history older than this day, so a new unit does not upload years of old data |
+
+The first four are set in the setup file; all but the emergency timer can also be
+changed from the Dropbox `config.txt` (see [Station configuration](#station-configuration)).
+
+## Where to start (manual setup)
 
 I recommend working through a new station in this order. Keep automatic field
 operation disabled until the individual tests pass.
@@ -134,8 +185,10 @@ sudo bash INSTALL.sh --config /root/tele-setup.conf --mode auto
 
 The installer fetches one Git revision, installs dependencies and the supplied
 Nanometrics package, configures Linux, Dropbox, email, Tailscale, VNC and systemd,
-and runs setup checks. It does not reboot or activate shutdown-capable operation
-unless `--enable-field` is explicitly supplied, which enables it for the next boot.
+and runs setup checks. It restarts the computer one minute after a successful
+installation (`REBOOT_AFTER=no` turns that off) so the new account and automatic login
+apply, but it never activates shutdown-capable operation unless `--enable-field`
+is explicitly supplied, which enables it for the next boot.
 BIOS wake settings, USB power behaviour and vendor/account authorization still
 need preparation. A normal email/password pair cannot replace Dropbox OAuth.
 
@@ -317,17 +370,18 @@ the upload destination.
 
 - **[Installation guide](INSTALLATION.md):** hardware, photos, suppliers and the
   complete setup procedure.
+- **[Changelog](CHANGELOG.md):** what changed in each version.
 - **[Design notes](docs/DESIGN.md):** collection, verification and recovery behaviour.
 - **[Test checklist](docs/VALIDATION.md):** checks to complete before deployment.
 
 The installer and module framework still need end-to-end bench testing on the
 target Ubuntu computer. Automated tests use mocks and local files, not a real
-Nanometrics recorder, live Dropbox or antenna. Camera support is not implemented;
-the disabled module template is for future development.
+Nanometrics recorder, live Dropbox or antenna. The disabled module template in
+`modules/` is for future collectors.
 
 If you build a station or find something that can be improved, please get in
 touch or open an issue in this repository. I would like to keep the setup
 practical, easy to understand and reliable enough to leave in the field.
 
-Software: `4.0.1`. Documentation updated: 13 October 2026. Record the Git revision as well.
+Software: `4.1.0`. Documentation updated: 2 November 2026. Record the Git revision as well.
 

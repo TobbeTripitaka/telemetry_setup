@@ -222,6 +222,12 @@ Use [INSTALLATION.md](INSTALLATION.md) as the complete procedure and
 [INSTALL.sh](INSTALL.sh) as the staged installer. Work with physical access and
 reliable bench power; this is not an unattended field run.
 
+**With a ready-made bundle** (the usual case): unzip the folder on the Desktop,
+connect the internet (Starlink or cable) and the recorder, and run
+`sudo bash INSTALL.sh` from inside it. It covers steps 2 to 5 below, sets the
+computer name, account and password, restarts the computer when it is done and
+leaves `INSTALL-REPORT.txt`: send that file back. Then continue with step 6.
+
 1. Review the handover record and resolve login, disk-unlock, networking and
    hardware-access problems.
 2. Obtain the agreed TELE revision and authorized Nanometrics package.

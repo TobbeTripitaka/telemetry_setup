@@ -128,10 +128,25 @@ record_second_versions() {
     done <"$conflicts"
 }
 
+quarantine_batch() {
+    local batch=$1 quarantine="$STATE_ROOT/quarantine" old
+    mkdir -p -- "$quarantine" || return 0
+    mv -T -- "$batch" "$quarantine/$(basename -- "$batch")-$RUN_ID" 2>/dev/null || rm -rf -- "$batch"
+    # Keep only the newest few; this is a diagnostic aid, not an archive.
+    while IFS= read -r old; do rm -rf -- "$old"; done < <(ls -1dt "$quarantine"/* 2>/dev/null | tail -n +6)
+    return 0
+}
+
 upload_batch() {
     local batch=$1 day force temp rel verify
     local conflicts=$batch/conflicts.txt skips=$batch/skips.txt
-    validate_batch "$batch" || { die "Pending batch integrity check failed: $batch"; return 1; }
+    if ! validate_batch "$batch"; then
+        # A damaged batch must never block this recorder for good: set it aside
+        # (kept for inspection) so the day is exported again at the next run.
+        quarantine_batch "$batch"
+        die "Pending batch failed its integrity check and was set aside; the day will be exported again: $batch"
+        return 1
+    fi
     day=$(jq -r .day "$batch/meta.json")
     force=$(jq -r .force "$batch/meta.json")
     : >"$conflicts" || return 1

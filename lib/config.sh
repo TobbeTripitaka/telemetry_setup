@@ -89,7 +89,7 @@ runtime_defaults() {
     EXECUTE=auto
     HARVEST_MODE=incremental
     REQUEST_ID=''
-    FROM_DATE='' TO_DATE=''
+    FROM_DATE='' TO_DATE='' START_DATE=''
     MAINTENANCE_IDLE_SECONDS=600
     HARVEST_BUDGET_SECONDS=3600
     NETWORK_TIMEOUT_SECONDS=300
@@ -107,7 +107,7 @@ runtime_key() {
         EXECUTE) [[ $value =~ ^(auto|ssh|vnc)$ ]] || return 1 ;;
         HARVEST_MODE) [[ $value =~ ^(incremental|reconcile|reupload|range)$ ]] || return 1 ;;
         REQUEST_ID) [[ $value =~ ^[A-Za-z0-9_.-]{1,80}$ ]] || return 1 ;;
-        FROM_DATE|TO_DATE)
+        FROM_DATE|TO_DATE|START_DATE)
             [[ $value =~ ^20[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]] &&
                 [[ $(date -u -d "$value" +%F 2>/dev/null) == "$value" ]] || return 1 ;;
         MAINTENANCE_IDLE_SECONDS) integer_between "$value" 0 3600 || return 1 ;;

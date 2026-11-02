@@ -96,5 +96,5 @@ rejection, content mismatch, failed uploads, retry without hardware, retention,
 native path collisions, profile isolation and failure followed by another source.
 Then test on the actual logger and power arrangement before field activation.
 
-The current implemented provider is Pegasus. Neither the camera placeholder nor
-the disabled example claims to support another device yet.
+The current implemented provider is Pegasus. The disabled example does not
+claim to support another device yet.

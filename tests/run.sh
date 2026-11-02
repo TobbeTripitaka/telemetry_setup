@@ -315,6 +315,10 @@ test_email_retries_and_reports_the_reason() {
     HARVEST_MODE=incremental EXECUTE=auto MAINTENANCE_IDLE_SECONDS=600
     PATH="$BASE/fakebin:$PATH" expect_failure send_notification TEST
     [[ $(wc -l <"$BASE/curl-calls") == 3 ]]
+    : >"$BASE/curl-calls"
+    CLOUD_READY=no PATH="$BASE/fakebin:$PATH" expect_failure send_notification TEST
+    [[ $(wc -l <"$BASE/curl-calls") == 1 ]]
+    CLOUD_READY=yes
     [[ $EMAIL_ERROR == *'curl status 67'*'Login denied'* ]]
     ! grep -q secretsecret1234 "$LOG_FILE"
 }
@@ -576,6 +580,24 @@ test_incremental_skip_verified_old() {
     EARLIEST_NS=1735689600000000000 LATEST_NS=1735689700000000000
     PEGASUS_BIN=/nonexistent
     harvest_cycle
+}
+test_damaged_pending_batch_is_set_aside_not_blocking() {
+    batch
+    printf 'damaged\n' >>"$SPOOL/2025-01-01/READY"
+    expect_failure upload_batch "$SPOOL/2025-01-01"
+    [[ ! -d $SPOOL/2025-01-01 ]] && ls -d "$STATE_ROOT"/quarantine/2025-01-01-* >/dev/null
+    # The day is simply exported and uploaded again.
+    batch
+    upload_batch "$SPOOL/2025-01-01"
+    [[ -f $VERIFIED/2025-01-01.json ]]
+}
+test_start_date_skips_older_history() {
+    EARLIEST_NS=1735689600000000000 LATEST_NS=1735905600000000000
+    START_DATE=2025-01-03 HARVEST_BUDGET_SECONDS=30
+    harvest_cycle
+    [[ -f $VERIFIED/2025-01-03.json && ! -e $VERIFIED/2025-01-01.json && ! -e $VERIFIED/2025-01-02.json ]]
+    expect_failure runtime_key START_DATE 2025-13-40
+    runtime_key START_DATE 2025-01-03
 }
 test_new_request_revisits_verified_day() {
     batch

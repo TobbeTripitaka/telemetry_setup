@@ -174,7 +174,7 @@ parse_setup() {
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
           OPERATOR_USER|TAILSCALE_AUTH_KEY|ENABLE_VNC|VNC_PASSWORD|\
           STARLINK_ADDRESS|STARLINK_SNOW_MELT|EMERGENCY_SECONDS|DISABLE_SLEEP|\
-          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|REBOOT_AFTER|LOCATION|RUN_LIMIT_SECONDS|INSTALL_EMAIL_DETAILS|\
+          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|REBOOT_AFTER|LOCATION|RUN_LIMIT_SECONDS|START_DATE|INSTALL_EMAIL_DETAILS|\
           EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|NETWORK_WAIT_SECONDS|\
           UPLOAD_TEST|EMAIL_TEST) ;;
           *) fail "Unknown setup key: $key" ;;
@@ -410,6 +410,9 @@ validate_setup() {
     runtime_key MAINTENANCE_IDLE_SECONDS "$(get MAINTENANCE_IDLE_SECONDS 600)" || fail 'Invalid maintenance window'
     runtime_key NETWORK_WAIT_SECONDS "$(get NETWORK_WAIT_SECONDS 1200)" || fail 'NETWORK_WAIT_SECONDS: 0..3600'
     runtime_key RUN_LIMIT_SECONDS "$(get RUN_LIMIT_SECONDS 7200)" || fail 'RUN_LIMIT_SECONDS: 1800..21600'
+    (( RUN_LIMIT_SECONDS + 900 <= $(get EMERGENCY_SECONDS 14400) )) ||
+        fail 'RUN_LIMIT_SECONDS must be at least 900 s shorter than EMERGENCY_SECONDS (the emergency timer is the last resort)'
+    [[ -z $(get START_DATE) ]] || runtime_key START_DATE "$(get START_DATE)" || fail 'START_DATE: a date like 2026-11-01'
     [[ $EXECUTE != vnc || $(get ENABLE_VNC yes) == yes ]] || fail 'EXECUTE=vnc requires ENABLE_VNC=yes'
     for key in EMAIL_FROM EMAIL_TO EMAIL_PASSWORD; do
         credential_key "$key" "$(get "$key")" || fail "Missing/invalid $key"
@@ -742,6 +745,7 @@ install_release_and_config() {
         printf 'MAINTENANCE_IDLE_SECONDS=%s\n' "$(get MAINTENANCE_IDLE_SECONDS 600)"
         printf 'NETWORK_WAIT_SECONDS=%s\n' "$(get NETWORK_WAIT_SECONDS 1200)"
         printf 'RUN_LIMIT_SECONDS=%s\n' "$(get RUN_LIMIT_SECONDS 7200)"
+        [[ -z $(get START_DATE) ]] || printf 'START_DATE=%s\n' "$(get START_DATE)"
         printf 'LOCAL_DATA=%s\n' "$LOCAL_DATA_VALUE"
     } >"$WORK/config/config.txt"
     for key in EMAIL_FROM EMAIL_TO EMAIL_PASSWORD; do

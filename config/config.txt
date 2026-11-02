@@ -11,6 +11,7 @@ NETWORK_WAIT_SECONDS=1200
 # Hard limit of one field run, in seconds since boot. Past it the run wraps up
 # (log, email, power off) even if the connection is patchy. 1800..21600.
 RUN_LIMIT_SECONDS=7200
+# START_DATE=2026-11-01   first UTC day to collect; older recorder history is skipped.
 LOCAL_DATA=keep
 # For a resumable full scan:
 # HARVEST_MODE=reconcile

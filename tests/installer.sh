@@ -5,8 +5,6 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 BASE=$(mktemp -d)
 trap 'rm -rf "$BASE"' EXIT
 PASS=0 FAIL=0
-# The package belongs to one computer: station= must equal the computer name.
-hostnamectl() { printf 'bench01\n'; }
 SUDO_USER=$(id -un); export SUDO_USER
 test_plan_without_config_or_root() {
     bash "$ROOT/INSTALL.sh" --mode plan >"$BASE/plan"
@@ -181,23 +179,10 @@ test_operator_password_rules() {
     SETUP[OPERATOR_PASSWORD]=tele99
     validate_setup
 }
-test_package_for_another_computer_is_refused() {
-    setup_validation
-    SETUP[station]=other-computer
-    set +e; (set -e; validate_setup) >"$BASE/other" 2>&1; local rc=$?; set -e
-    [[ $rc != 0 ]]
-    grep -q "This package is for the computer 'other-computer'" "$BASE/other"
-    grep -q 'hostnamectl set-hostname other-computer' "$BASE/other"
-}
-test_obsolete_rename_keys_are_refused() {
-    local obsolete
-    for obsolete in COMPUTER_NAME RENAME_FROM RENAME_FROM_USER; do
-        printf 'station=bench01\n%s=x\n' "$obsolete" >"$BASE/obsolete.conf"
-        chmod 600 "$BASE/obsolete.conf"
-        set +e; (source "$ROOT/INSTALL.sh"; WORK="$BASE"; CONFIG="$BASE/obsolete.conf"; parse_setup) >"$BASE/obsolete" 2>&1; local rc=$?; set -e
-        [[ $rc != 0 ]] || return 1
-        grep -q 'obsolete' "$BASE/obsolete"
-    done
+test_obsolete_rename_keys_are_ignored() {
+    printf 'station=bench01\nCOMPUTER_NAME=x\nRENAME_FROM=y\nRENAME_FROM_USER=z\n' >"$BASE/obsolete.conf"
+    chmod 600 "$BASE/obsolete.conf"
+    ( source "$ROOT/INSTALL.sh"; WORK="$BASE"; CONFIG="$BASE/obsolete.conf"; parse_setup ) >"$BASE/obsolete" 2>&1
 }
 test_data_folder_is_created_for_the_operator() {
     source "$ROOT/INSTALL.sh"

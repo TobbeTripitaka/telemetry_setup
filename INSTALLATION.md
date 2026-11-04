@@ -21,9 +21,9 @@ Nanometrics `.deb` and a checksum list.
 
 1. Copy `credentials.example.txt` to `<computer>.conf` and fill in every
    `REPLACE_WITH` value. The file explains Dropbox (token), Gmail (app password) and
-   Tailscale (auth key). `station=` is the computer's own name, for example `tele2`;
-   the computer keeps its name and its login account. `LOCATION` is a free label such
-   as `Mt Strathcona CAD4`.
+   Tailscale (auth key). `station=` is a short station name, for example `cad4`; it
+   selects the Dropbox folder. The computer is never renamed and keeps its login
+   account. `LOCATION` is a free label such as `Mt Strathcona CAD4`.
 2. Build the folder:
 
 ```bash
@@ -31,15 +31,13 @@ Nanometrics `.deb` and a checksum list.
 scripts/make-bundle.sh --setup tele2.conf --deb pegasus-harvester_2.3.27_amd64.deb --encrypt
 ```
 
-3. Send the zip (and the passphrase by another channel) to the technician. If the
-   installer finds that the computer has another name than `station=`, it stops and
-   prints the one command that renames the computer.
+3. Send the zip (and the passphrase by another channel) to the technician.
 
 ## What the installer does
 
 `sudo bash INSTALL.sh` runs unattended and can be repeated. In order:
 
-1. Checks the setup file, the computer name and the internet connection.
+1. Checks the setup file and the internet connection.
 2. Installs packages, the Nanometrics Harvester (checksum verified), rclone, mosh
    and Tailscale; turns automatic updates off.
 3. Sets the password of the technician account, automatic login without a password,
@@ -119,7 +117,7 @@ is no software relay command, so what the USB port does after shutdown matters.
 ## Troubleshooting
 
 - **Typing freezes over SSH on Starlink:** use `mosh <account>@<tailscale address>`.
-  Log in as the technician account (the computer's own account), not as the computer name.
+  Log in as the technician account that ran the installer.
 - **Uploads are slow or partial:** read the run log. Complete days stay on the
   computer and resume at the next run; they are never marked done before Dropbox
   verification. Check the Starlink dish view and `docs/STARLINK.md`.

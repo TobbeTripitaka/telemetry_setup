@@ -21,10 +21,13 @@ Layout
   per-day receipts).
 
 Installer
-- The computer keeps its name and its account. The rename step, `COMPUTER_NAME`,
-  `RENAME_FROM`, account creation and the Desktop copy are removed. `station=` must
-  equal the computer name; otherwise the installer stops and prints the one command
-  that renames it. `LOCATION` is the free label, for example "Mt Strathcona CAD4".
+- The computer is never renamed and keeps its login account. The rename step,
+  `COMPUTER_NAME`, `RENAME_FROM`, account creation and the Desktop copy are removed
+  (the old keys are ignored if present). `station=` is only the key for the Dropbox
+  folder and local state, independent of the computer name. `LOCATION` is the free
+  label, for example "Mt Strathcona CAD4".
+- The internet check accepts any answer from github.com, archive.ubuntu.com or
+  Dropbox and shows curl's error if all fail.
 
 Power and documentation
 - `sudo tele-maintenance on|off|status` keeps the computer on for upgrades at any

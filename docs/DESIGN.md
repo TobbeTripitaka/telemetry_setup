@@ -65,7 +65,8 @@ which use a synthetic Harvester and local rclone:
 
 ## Decisions
 
-- No station-name rename: the computer keeps its name; `station=` equals it.
+- No renaming: the computer keeps its own name and account; `station=` only selects
+  the Dropbox folder and local state.
 - The seismic tree is shared by all recorders of a computer; network and station
   codes in the paths keep them apart.
 - Native names only; TELE adds files (`.json` records, `tele_logfiles/`) and never

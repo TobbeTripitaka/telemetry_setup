@@ -145,7 +145,7 @@ parse_setup() {
             fail 'Invalid or duplicate setup key'
         case "$key" in
           COMPUTER_NAME|RENAME_FROM|RENAME_FROM_USER)
-            fail "$key is obsolete: the computer keeps its own name. Remove this line (station= must equal the computer name)." ;;
+            : ;;  # Obsolete and ignored: the computer is never renamed.
           station|DROPBOX_ROOT|RCLONE_REMOTE|RCLONE_CONFIG_FILE|DROPBOX_TOKEN_JSON|\
           EMAIL_FROM|EMAIL_TO|EMAIL_PASSWORD|RECORDER_DEVICE|RECORDER_SERIAL|SOURCES_JSON|\
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
@@ -350,13 +350,8 @@ fetch_release() {
 }
 validate_setup() {
     valid_station "$(get station)" || fail 'A valid station is required'
-    # The computer keeps its name and its login account. station= must be the
-    # computer's name: the package belongs to one computer, so a different name
-    # means the wrong package was taken to this computer.
-    local host
-    host=$(hostnamectl --static 2>/dev/null || hostname)
-    [[ ${host,,} == "$(get station | tr 'A-Z' 'a-z')" ]] ||
-        fail "This package is for the computer '$(get station)', but this computer is named '$host'. Use the package made for this computer, or rename it first:  sudo hostnamectl set-hostname $(get station | tr 'A-Z' 'a-z')"
+    # The computer keeps its own name and login account; station= only selects the
+    # Dropbox folder and the local state, and is independent of the computer name.
     USER_NAME=$(get OPERATOR_USER "${SUDO_USER:-}")
     [[ $USER_NAME =~ ^[a-z_][a-z0-9_-]{0,30}$ && $USER_NAME != root ]] ||
         fail 'Run the installer with sudo from the technician account (not as root), or set OPERATOR_USER'
@@ -924,7 +919,7 @@ main() {
         say '2. Install bootstrap tools, fetch one Git revision (or verify the bundle), validate private setup.'
         say '3. Update Ubuntu/snaps once; turn off automatic apt/snap updates for field boots.'
         say '3b. Install dependencies, pinned rclone/grpcurl and approved Harvester.'
-        say '4. Check the computer name; set the account password, automatic login, no lock screen, UTC/NTP, optional sleep masks and SSH.'
+        say '4. Set the account password, automatic login, no lock screen, UTC/NTP, optional sleep masks and SSH.'
         say '5. Install/enroll Tailscale with SSH enabled.'
         say '6. Back up private settings, deploy release, write configuration/profiles.'
         say '7. Install VNC and inactive systemd power-protection units.'

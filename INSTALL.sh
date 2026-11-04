@@ -291,16 +291,22 @@ preflight() {
     WORK=$(mktemp -d /var/tmp/tele-install.XXXXXX)
 }
 require_internet() {
-    # Fail early and clearly: everything below downloads packages.
-    local try
+    # Fail early and clearly: everything below downloads packages. Any answer from
+    # any of these servers proves the connection (a proxy or captive portal may
+    # refuse one request type or one site, so one refusal is not "no internet").
+    local try url last='' err
     for try in 1 2 3 4 5 6; do
-        if curl --silent --head --fail --connect-timeout 15 --max-time 25 \
-            --proto '=https' https://github.com >/dev/null 2>&1; then
-            return 0
-        fi
+        for url in https://github.com https://archive.ubuntu.com https://api.dropboxapi.com; do
+            if err=$(curl --silent --show-error --output /dev/null --connect-timeout 15 --max-time 25 \
+                --proto '=https' "$url" 2>&1); then
+                return 0
+            fi
+            last="$url: $err"
+        done
         ((try == 6)) || sleep 10
     done
-    fail "No internet: this computer cannot reach github.com.
+    fail "No internet: this computer cannot reach github.com, archive.ubuntu.com or Dropbox.
+  Last error: $last
   Connect the cable or Wi-Fi (or power up Starlink and wait a few minutes), then rerun.
   To find the cause, run:  ping -c 2 1.1.1.1   and   resolvectl status
   Pings work but names do not resolve: the DNS server is wrong or down;

@@ -1,181 +1,72 @@
-# TELE v4 candidate: design and review
+# Design notes and what only hardware can prove
 
-This document records the implementation decisions after reviewing the GitHub
-baseline and the supplied scripts. It distinguishes local software validation
-from the device and service testing still required before field use.
+## Operating contract
 
-## Agreed operating contract
+- **Power:** weekly BIOS wake-up; USB 5 V energizes the Starlink relay; no separate
+  power controller. Normal completion, failure and the emergency timer all end in a
+  systemd poweroff, but only while `/etc/tele/FIELD_ENABLED` exists
+  (`tele-maintenance on` removes it).
+- **Time:** a run is limited by `RUN_LIMIT_SECONDS` (default 2 h); the emergency timer
+  requests poweroff 4 h after boot. Harvest, network wait and maintenance window have
+  their own budgets inside the run limit.
+- **Truth about progress:** a day is recorded as done only after its files are
+  verified by Dropbox content hash. Complete exports waiting for upload stay in
+  `/var/lib/tele/<computer>/sources/<serial>/pending` and are retried at every run,
+  also without the recorder connected.
+- **Data volume:** about 40 to 50 MB per day; the recorder holds years.
 
-- **Power:** weekly BIOS wake-up; USB 5 V energizes the Starlink relay; no new
-  external power controller. Normal completion and failures should power off.
-- **Budgets:** sources share a default 3,600-second collection allowance;
-  device/network calls and native exports respect the remaining deadline, with
-  bounded termination grace and local bookkeeping overhead. The emergency timer requests poweroff at four
-  hours from boot, including during remote sessions.
-- **Maintenance:** only `ssh`/`vnc` modes wait after the collection/report stages.
-  Default is 600 idle seconds. Detected active connections keep resetting the
-  countdown; the emergency timer still wins.
-- **Data:** up to about 50 MB/day, about three years retained by the recorder;
-  waveform, SOH, legacy SOH and logs, without a PSF image.
-- **Storage:** native Harvester paths inside a station-specific Dropbox prefix;
-  no wrapping archive/run directory. Keep completed pending exports and,
-  optionally, the last verified daily batch locally.
-- **Features:** remote Dropbox settings, Tailscale SSH, VNC, Starlink diagnostics,
-  and an email attempt each run. Camera is not in the runtime path.
+## Measured facts about the Pegasus and its command-line Harvester (2.3.27)
 
-## Corrections to the earlier discussion
+Measured on a recorder with data from December 2023 to 2026 and compared with the
+Pegasus Harvester application on the same computer.
 
-- **Shutdown on failure is required**, not a design defect for this application.
-  The defects were late installation of the exit trap and inadequate protection
-  against a stuck process. The initial `INT TERM EXIT` trap in the supplied
-  `tele.sh` was commented out, not an active first trap.
-- **The old `PEGASUS_BIN` path was a GUI launch target.** It was not necessarily
-  wrong for the old Puppeteer workflow. The replacement deliberately uses the
-  verified bundled native `.../build/Release/harvester`.
-- **“Since last” was not implemented in `tele.sh`.** Configuration passed a
-  mode to JavaScript, which selected the GUI button. It was not tied to Dropbox
-  verification. The replacement owns per-day upload acknowledgments.
-- **`-safe` is not read-only mode.** The user's native output includes
-  `flush-harvesting-history`. No erase/format/init command is introduced, but the
-  Harvester can update its own recorder history.
-- **Sensor bounds alone are insufficient for all data types.** The candidate
-  queries volume IDs 1–7 and uses the union of available positive time bounds.
-  Metadata-only volumes and missing-volume messages require device validation.
-- **File durations need explicit testing.** The pasted CLI help says the
-  harvest default is one hour while the default path contains a day number.
-  The candidate explicitly requests `-d=24` and does not override `-p`.
+1. **Use the whole device** (`/dev/sdb`), not the partition (`/dev/sdb1`); the
+   partition is rejected as "not FAT32".
+2. **Time windows work for data and logs.** A window of exactly one UTC day gives the
+   same samples as the application (21 600 000 samples for a 100 Hz channel, identical
+   sum, start and end). The bytes differ because the records are packed differently,
+   so files are compared by content, never by byte for byte against the application.
+3. **A day window also writes a short log stub for the neighbouring day.** Its own
+   window exports that day complete, so `prune_other_days` drops files whose
+   `.YYYY.JJJ` ending is not the exported day.
+4. **State-of-health cannot be selected by time.** `-l` fails with "Lower bound not
+   found" unless it equals the very first record, and an upper bound alone is
+   ignored. The harvest still ends `COMPLETED(0)` with zero files, which is why this
+   went unnoticed. TELE exports all SOH once per run into a work folder and gives
+   each day its files (`.YYYY.JJJ`). The SOH volume is a fixed 572 MiB, so this is
+   bounded; the time it takes on the Atom computer is to be measured.
+5. **SOH types:** the command line writes 28 types (the application writes 25;
+   `AGL`, `APT` and `VPO` are extra). All are kept.
+6. **File names:** without `-ext=0` the command line appends `.mseed` and `.txt`; the
+   application does not. TELE passes `-ext=0`.
+7. **StationXML:** not written by the command line. At deployment the recorder stores
+   a JSON record (gzip, base64) in its operation log (volume 5). `read-volume -id=5`
+   prints it; the message times match the XML file names. TELE saves each as
+   `NN.SSSS_<UTC>Z.json`. The application builds the 175 kB XML from this record plus
+   its own sensor-response library.
+8. **Harvest history:** each harvest, also from the command line, is written into the
+   recorder (`show-history`, volumes 1, 2 and 7) with its page range. TELE does not
+   depend on it; it keeps its own list of verified days.
+9. **Volumes 8 to 10** exist in newer Harvester versions only; this recorder and
+   version have volumes 1 to 7.
 
-## Pipeline and transaction boundary
+## Remaining checks on hardware
 
-The lowercase `station` setting in `/etc/tele/config.txt` supplies the upload
-and local-state label. Node configuration contains hardware identity and the
-Dropbox remote/root, not the station label. The station's downloaded `config.txt`
-must declare the same label; a missing/mismatched label is rejected before the
-cache or active settings are changed.
+Not provable with the offline tests (`bash tests/run.sh`, `bash tests/installer.sh`),
+which use a synthetic Harvester and local rclone:
 
-This resolves the initial config-location lookup without letting a misplaced
-remote file switch destinations and reuse checkpoints from a different station.
-See `docs/RENAME.md` before changing an installed station's paths.
+- a real one-day export compared with the application for the same day (names,
+  `soh/`, `logs/`) after the `-ext=0` and SOH changes;
+- the time of the whole-volume SOH export on the field computer;
+- Dropbox recovery after a link drop-out in the middle of a day;
+- SSH/mosh sessions, VNC if used, the email on a poor link;
+- BIOS wake in UTC, the USB relay cutoff, and a full wake, run and poweroff cycle
+  with `tele-maintenance on` and `off`.
 
-```text
-boot timer active
-  -> field service / exclusive lock
-  -> local identity and safe config
-  -> Starlink diagnostics
-  -> verify/retry complete pending exports
-  -> identify recorder and inspect available volumes
-  -> for each required UTC day:
-       isolated native export
-       exit/status checks and disk reserve checks
-       freeze Dropbox-compatible file hashes
-       mark local batch ready
-       copy missing/changed files (or force requested transfer)
-       verify remote hashes against the frozen manifest
-       publish small receipts
-       atomically acknowledge day locally
-       retain last daily batch / remove older verified payload
-  -> log upload and email attempt
-  -> optional bounded SSH/VNC maintenance
-  -> final log snapshot
-  -> systemd poweroff
-```
+## Decisions
 
-An interrupted native export has no ready batch or acknowledgment. Its scratch
-payload is discarded on recovery after saving the diagnostic log, and its day
-is re-harvested. A completed export whose upload or verification failed remains
-pending. A crash after Dropbox accepted data but before the local acknowledgment
-causes a retry; content comparison avoids unnecessary normal retransmission.
-
-Rclone's Dropbox backend supports its content hash; verification uses an
-explicit Dropbox hash manifest rather than a size-only check. The candidate
-uses synchronous Dropbox batching, not asynchronous upload acceptance
-([rclone Dropbox integrity behaviour](https://rclone.org/dropbox/)).
-These checks verify transferred bytes, not scientific signal validity.
-
-No remote deletion or recorder deletion is performed. Dropbox extra files are
-left alone through one-way verification; the candidate is not a destructive mirror.
-One-way checking only requires source files to exist and match remotely
-([rclone check](https://rclone.org/commands/rclone_check/)).
-
-## Module responsibilities
-
-`tele.sh` exposes a top-to-bottom lifecycle. `lib/workflow.sh` implements shared
-stages, while `lib/sources.sh` isolates source profiles and dispatches trusted
-`modules/` providers. See [the module contract](MODULES.md) for extension and
-multi-recorder namespace rules; a profile is never sourced as executable code.
-
-Bench `--check` and `--once` modes do not request shutdown and refuse to overlap
-an active field service/timer. Field mode retains the service-level and separate
-timer shutdown mechanisms.
-
-- **`tele.sh`:** short orchestration, exclusive lock, stage status, best-effort
-  failure notification, maintenance entry. Shutdown is owned outside the script.
-- **`common.sh`:** stderr logging, atomic durable replacements, command bounds,
-  dependency/private-file checks and free-space threshold.
-- **`config.sh`:** allow-listed literal parsing; no `source`/`eval`. Rejects
-  duplicate/unknown settings and impossible dates. Last validated remote config
-  survives a bad or failed download.
-- **`hardware.sh`:** whole-disk by-id and serial verification, refusal of the OS
-  disk, recorder identity binding, metadata and volume range inspection.
-- **`harvest.sh`:** isolated daily exports, all enabled types, exit/message checks,
-  bounded child process, disk monitoring, ready markers, resumable requests.
-- **`upload.sh`:** immutable-manifest checks, native path collision guard,
-  content-aware upload, remote verification, acknowledgments and retention.
-- **`notification.sh`:** bounded read-only Starlink gRPC request, immutable log
-  snapshots, retry of previous logs, private curl credential file, status email.
-- **`remote.sh`:** conservative SSH/Tailscale/VNC connection detection and
-  idle-window reset; no package installation during a collection run.
-- **`systemd/`:** boot-time emergency guard, collector cleanup poweroff, and
-  private virtual-desktop VNC service template.
-
-The old postaction module was unused by the main script and duplicated incompatible
-mode names. Its cleanup search could include the data directory itself. It is
-removed instead of retaining another deletion/control path.
-
-## Important limits and unresolved checks
-
-- **No software-only power guarantee:** kernel failure, a stalled poweroff, or
-  firmware leaving USB powered cannot be ruled out without physical testing.
-  The user cannot add an independent hardware cutoff.
-- **Native path collisions:** daily waveform files are expected, but native SOH,
-  metadata and log naming still need inspection. A path reused by different days
-  is rejected rather than overwriting a potentially longer earlier file. This
-  intentionally blocks collection until the format is understood.
-- **Cross-day timing:** exact endpoint inclusion, records straddling midnight,
-  linear time correction, and late GPS/metadata changes require real miniSEED
-  comparison. A two-day overlap is not proof that arbitrarily old corrections
-  will be detected; use `reconcile` for historical repair.
-- **Meaning of “all”:** it covers the recorder's currently retained history,
-  not already overwritten recordings. Volume-range advance is warned about.
-  The candidate does not reconstruct files from the remote receipts automatically;
-  missing local state instead leads to re-harvest with hash-based transfer skipping.
-- **One station writer:** different computers must use distinct station prefixes.
-  The local lock does not coordinate two independent computers writing one prefix.
-- **Fresh station prefix for tests:** legacy archives are not unpacked/migrated,
-  and existing unverified daily files must not be assumed complete. Test against
-  an isolated Dropbox station prefix before production reconciliation.
-- **Local retention:** “last batch” means one daily chunk, not the whole weekly
-  upload. It is configurable on/off in this candidate.
-- **Notifications:** best effort and bounded; unavailable network or an emergency
-  poweroff can prevent email. An abrupt whole-system failure cannot be reported
-  by the failed machine.
-- **VNC behaviour:** a private virtual Xfce desktop is proposed; it is not an
-  exact clone of the old physical-screen x11vnc experience.
-- **Session detection:** conservative process/socket checks include idle transport
-  connections. They are not a universal authentication-aware session API and
-  must be validated with installed OpenSSH, Tailscale and VNC versions.
-- **Files not available:** the original CLI PDF and vendor `.deb` were not present.
-  The supplied terminal help and successful recorder output informed the adapter.
-
-## Code-version policy
-
-Use a reviewed branch and a tagged, tested release with an exact commit/checksum.
-Never update an inaccessible field node directly from a moving `main` branch.
-Keep recorder progress, pending files and secrets outside versioned code.
-`INSTALL.sh` deploys a revision-labelled release and private settings without
-rolling back upload acknowledgments or deleting pending data. It offers plan,
-per-stage confirmation and automatic modes, with separate next-boot field activation.
-
-Local automated tests do not perform live Dropbox writes, device access, email,
-poweroff or field deployment. Source-code publication is separate from station
-installation and does not prove acceptance on the actual hardware.
+- No station-name rename: the computer keeps its name; `station=` equals it.
+- The seismic tree is shared by all recorders of a computer; network and station
+  codes in the paths keep them apart.
+- Native names only; TELE adds files (`.json` records, `tele_logfiles/`) and never
+  changes Harvester output.

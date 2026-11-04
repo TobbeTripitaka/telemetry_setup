@@ -35,15 +35,8 @@ status_one_source() {
     else
         printf '  Uploaded  no day verified yet\n'
     fi
-    days=$(status_list_days "$dir/kept")
-    count=$(grep -c . <<<"$days" || true)
-    if ((count)); then
-        printf '  Local copy %s day(s), %s MiB, in kept/<day>/files/ (native Harvester paths); LOCAL_DATA=%s\n' \
-            "$count" "$(status_size_mib "$dir/kept")" "${LOCAL_DATA:-keep}"
-    fi
     count=$(find "$dir/quarantine" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l)
     ((count == 0)) || printf '  Set aside %s damaged batch(es) in quarantine/ (the days are exported again)\n' "$count"
-    printf '  (owners/ holds one small hash-named record per uploaded file; it is bookkeeping, not data)\n'
 }
 
 status_report() {
@@ -61,8 +54,11 @@ status_report() {
     printf '  Settings   %s  (config.txt, node.conf, credentials.txt)\n' "${CONFIG_DIR:-/etc/tele}"
     printf '  Code       /opt/tele/current\n'
     printf '  Run logs   %s  (latest: %s)\n' "$LOG_ROOT" "${latest:-none yet}"
-    printf '  Dropbox    %s\n' "$REMOTE_BASE"
-    printf '  Data       %s/sources/<recorder serial>/{pending,verified,kept}\n' "$STATE_ROOT"
+    printf '  Dropbox    %s  (config.txt, Nanometrics/, tele_logfiles/)\n' "$REMOTE_BASE"
+    printf '  Seismic data  %s  (local copy: Y/NN/SSSS/CCC.D/, logs/, soh/, deployment .json; LOCAL_DATA=%s)\n' \
+        "$LOCAL_ARCHIVE" "${LOCAL_DATA:-keep}"
+    printf '  Dropbox data  %s/Nanometrics    (same layout)\n' "$REMOTE_BASE"
+    printf '  Bookkeeping   %s/sources/<recorder serial>/{pending,verified}\n' "$STATE_ROOT"
     base=$(dirname -- "$STATE_ROOT")
     if [[ -d $STATE_ROOT/sources ]] && find "$STATE_ROOT/sources" -mindepth 1 -maxdepth 1 -type d | grep -q .; then
         while IFS= read -r src; do
@@ -74,5 +70,4 @@ status_report() {
     fi
     others=$(find "$base" -mindepth 1 -maxdepth 1 -type d ! -name "$STATION_NAME" -printf '%f ' 2>/dev/null || true)
     [[ -z $others ]] || printf '\nOther station folders on this computer (from an earlier name, not used now): %s\n' "$others"
-    printf '\nThe empty folders pending/, verified/, owners/ and kept/ directly under %s belong to the single-recorder layout and are unused here.\n' "$STATE_ROOT"
 }

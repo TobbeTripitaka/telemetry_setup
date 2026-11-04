@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # Daily, isolated exports. The native -p path pattern is NEVER overridden.
+# One recorder export is one native Harvester call per UTC day for data and logs,
+# plus ONE call per run for state-of-health (see ensure_soh_export). The native
+# output pattern is never overridden; only -ext=0 is added so that file names
+# match those written by the Pegasus Harvester application (no .mseed/.txt).
 harvest_log_ok() {
+    # harvest_log_ok <log> <operation>...: every named operation must have completed.
     local file=$1 op
+    shift
     if grep -Eq '<<<ERROR|status[ =]+(FAILED|ERROR|ABORTED)' "$file"; then return 1; fi
-    for op in harvest-logs harvest-soh harvest-data; do
+    for op in "$@"; do
         grep -Fq "Operation '$op' finished with status COMPLETED(0)" "$file" || return 1
     done
     # Firmware on the user's recorder lacks volume 3. Allow only this known skip.
@@ -16,19 +22,15 @@ harvest_log_ok() {
         grep -Eiq '(^|[^a-z])(error|failed|aborted|cancelled)([^a-z]|$)'; then return 1; fi
 }
 
-harvest_day() {
-    local start=$1 end=$2 request=$3 force=$4 remaining=$5
-    local day work pid started elapsed
-    day=$(date -u -d "@$start" +%F) || return 1
-    work=$(mktemp -d "$SPOOL/.partial-$day.XXXXXX") || return 1
-    mkdir "$work/files"
+run_export() {
+    # run_export <output dir> <log file> <seconds allowed> <extra harvester args>...
+    local out=$1 logfile=$2 remaining=$3 pid started result=0
+    shift 3
     started=$(uptime_seconds)
     # Keep a process group, not a broad pkill pattern. timeout handles its children.
     timeout --signal=TERM --kill-after=10 "$remaining" \
-        "$PEGASUS_BIN" harvest "-i=$DEVICE" "-o=$work/files" \
-        "-l=$((start * 1000000000))" "-u=$((end * 1000000000 - 1))" \
-        -d=24 -safe -harvestData=1 -harvestSoh=1 -harvestLegacySoh=1 -harvestLogs=1 \
-        >"$work/harvest.log" 2>&1 &
+        "$PEGASUS_BIN" harvest "-i=$DEVICE" "-o=$out" -d=24 -ext=0 -safe "$@" \
+        >"$logfile" 2>&1 &
     pid=$!
     while kill -0 "$pid" 2>/dev/null; do
         if ! disk_has_reserve; then
@@ -38,12 +40,79 @@ harvest_day() {
         fi
         sleep 1
     done
-    local result=0
     wait "$pid" || result=$?
-    elapsed=$(( $(uptime_seconds) - started ))
-    HARVEST_USED_SECONDS=$((HARVEST_USED_SECONDS + elapsed))
-    harvester_exit_ok "$result" && disk_has_reserve && harvest_log_ok "$work/harvest.log" ||
+    HARVEST_USED_SECONDS=$((HARVEST_USED_SECONDS + $(uptime_seconds) - started))
+    harvester_exit_ok "$result" && disk_has_reserve
+}
+
+prune_other_days() {
+    # A day window can also export a short stub of the neighbouring day (a log
+    # line stamped just before midnight). That day is exported complete by its own
+    # window, so files of other days are dropped here and can never conflict.
+    local root=$1 year=$2 jday=$3 file base dropped=0
+    while IFS= read -r -d '' file; do
+        base=${file##*/}
+        if [[ $base =~ \.([0-9]{4})\.([0-9]{3})$ ]] &&
+           [[ ${BASH_REMATCH[1]} != "$year" || ${BASH_REMATCH[2]} != "$jday" ]]; then
+            rm -f -- "$file"
+            dropped=$((dropped + 1))
+        fi
+    done < <(find "$root" -type f -print0)
+    find "$root" -mindepth 1 -type d -empty -delete
+    (( dropped == 0 )) || log "Dropped $dropped file(s) of neighbouring days from this export"
+    return 0
+}
+
+ensure_soh_export() {
+    # The native -l/-u window does not work for state-of-health ("Lower bound not
+    # found" and nothing is written), so SOH is exported ONCE per run without
+    # bounds into a work folder; each day then takes its own files from there.
+    local remaining=$1 log_file="$STATE_ROOT/soh-harvest.log"
+    [[ $SOH_EXPORT_DONE != yes ]] || return 0
+    SOH_DIR="$STATE_ROOT/soh-work"
+    rm -rf -- "$SOH_DIR" && mkdir -p -- "$SOH_DIR" || return 1
+    log "Exporting state-of-health once for this run"
+    run_export "$SOH_DIR" "$log_file" "$remaining" \
+        -harvestData=0 -harvestLogs=0 -harvestSoh=1 -harvestLegacySoh=1 &&
+        harvest_log_ok "$log_file" harvest-soh ||
+        { log "State-of-health export failed; see $log_file"; return 1; }
+    SOH_EXPORT_DONE=yes
+}
+
+merge_soh_for_day() {
+    # Copy the day's SOH files (name ends in .YYYY.JJJ) into the day's batch.
+    local work=$1 year=$2 jday=$3 file rel count=0
+    SOH_DAY_FILES=0
+    [[ -d $SOH_DIR/soh ]] || return 0
+    while IFS= read -r -d '' file; do
+        rel=${file#"$SOH_DIR/"}
+        mkdir -p -- "$work/files/$(dirname -- "$rel")" || return 1
+        cp -p -- "$file" "$work/files/$rel" || return 1
+        count=$((count + 1))
+    done < <(find "$SOH_DIR/soh" -type f -name "*.$year.$jday" -print0)
+    SOH_DAY_FILES=$count
+    return 0
+}
+
+harvest_day() {
+    local start=$1 end=$2 request=$3 force=$4 remaining=$5
+    local day year jday work
+    day=$(date -u -d "@$start" +%F) || return 1
+    year=$(date -u -d "@$start" +%Y) jday=$(date -u -d "@$start" +%j)
+    work=$(mktemp -d "$SPOOL/.partial-$day.XXXXXX") || return 1
+    mkdir "$work/files"
+    run_export "$work/files" "$work/harvest.log" "$remaining" \
+        "-l=$((start * 1000000000))" "-u=$((end * 1000000000 - 1))" \
+        -harvestData=1 -harvestLogs=1 -harvestSoh=0 -harvestLegacySoh=0 &&
+        harvest_log_ok "$work/harvest.log" harvest-logs harvest-data ||
         { log "Incomplete/failed export retained at $work"; return 1; }
+    prune_other_days "$work/files" "$year" "$jday"
+    if (( end * 1000000000 > SOH_LOWER_NS && start * 1000000000 <= SOH_UPPER_NS )); then
+        ensure_soh_export "$remaining" || return 1
+        merge_soh_for_day "$work" "$year" "$jday" || return 1
+        (( SOH_DAY_FILES > 0 || end * 1000000000 > SOH_UPPER_NS )) ||
+            log "WARNING: no state-of-health files for $day although the recorder's SOH volume covers it"
+    fi
     validate_paths "$work/files" || return 1
     # Freeze hashes before creating the ready marker. No log/manifest inside files/.
     cloud hashsum Dropbox "$work/files" --output-file "$work/dropbox.sum" \
@@ -92,7 +161,7 @@ harvest_cycle() {
         printf '%s\n' "$start" >"$STATE_ROOT/earliest-seen"
         sync -f "$STATE_ROOT/earliest-seen" || return 1
     fi
-    upload_instrument_info
+    SOH_EXPORT_DONE=no
     overlap_floor=$(( (now / 86400 - OVERLAP_DAYS) * 86400 ))
     HARVEST_USED_SECONDS=0
     for ((cursor=start; cursor<end; cursor+=86400)); do

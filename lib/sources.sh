@@ -50,24 +50,22 @@ discover_recorders() {
 }
 
 validate_source_set() {
-    local profile identity destination record
+    # Two recorders on one computer share the Nanometrics tree (their network and
+    # station codes keep the files apart); only the identity must be unique.
+    local profile identity
     local -A seen=()
     for profile in "${SOURCE_FILES[@]}"; do
-        record=$(
+        identity=$(
             load_source "$profile" || exit 1
             if [[ ${SOURCE_SETTINGS[TYPE]} == pegasus ]]; then
-                printf '%s\t%s' "$RECORDER_SERIAL" "$REMOTE_DATA"
+                printf '%s' "$RECORDER_SERIAL"
             else
-                printf 'provider:%s:%s\t%s' "${SOURCE_SETTINGS[TYPE]}" "$SOURCE_ID" "$REMOTE_DATA"
+                printf 'provider:%s:%s' "${SOURCE_SETTINGS[TYPE]}" "$SOURCE_ID"
             fi
         ) || return 1
-        IFS=$'\t' read -r identity destination <<<"$record"
-        [[ -z ${seen[identity:${identity,,}]+yes} ]] ||
+        [[ -z ${seen[${identity,,}]+yes} ]] ||
             { die "Duplicate source identity: $identity"; return 1; }
-        [[ -z ${seen[path:${destination,,}]+yes} ]] ||
-            { die "Case-insensitive source destination collision: $destination"; return 1; }
-        seen[identity:${identity,,}]=1
-        seen[path:${destination,,}]=1
+        seen[${identity,,}]=1
     done
 }
 
@@ -111,13 +109,12 @@ load_source() {
     [[ $target =~ ^[a-z][a-z0-9_-]*$ ]] || return 1
     if [[ $SOURCE_LEGACY == yes ]]; then
         STATE_ROOT=$STATION_STATE_ROOT
-        REMOTE_DATA="$STATION_REMOTE_BASE/$target"
+        REMOTE_DATA="$STATION_REMOTE_BASE/Nanometrics"
     else
         STATE_ROOT="$STATION_STATE_ROOT/sources/$SOURCE_ID"
-        REMOTE_DATA="$STATION_REMOTE_BASE/$target/$SOURCE_ID"
+        REMOTE_DATA="$STATION_REMOTE_BASE/Nanometrics"
     fi
     SPOOL="$STATE_ROOT/pending" VERIFIED="$STATE_ROOT/verified"
-    OWNERS="$STATE_ROOT/owners" KEPT="$STATE_ROOT/kept"
     LOG_ROOT=$STATION_LOG_ROOT REMOTE_BASE=$STATION_REMOTE_BASE
     RUN_ID="$STATION_RUN_ID-$SOURCE_ID"
 }

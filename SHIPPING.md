@@ -200,11 +200,11 @@ Prepare and deliver the following before the technician starts installation:
 - **Station assignment:** the unique `station` label and intended Dropbox
   destination for each computer.
 - **Private installer input:** a filled private copy of the setup example linked
-  from [INSTALLATION.md](INSTALLATION.md#prepare-the-private-setup-file).
+  from [credentials.example.txt](credentials.example.txt).
 - **Dropbox authorization:** approved project-account access to the intended
   shared/team folder, with the required rclone authorization material.
 - **Email:** sender, recipient and a station Google app password, following the
-  [email setup instructions](INSTALLATION.md#gmail-app-password-setup).
+  [email setup instructions](credentials.example.txt).
 - **Tailscale:** enrollment/access arrangements and the intended remote operator.
 - **VNC:** the separate credential if a virtual desktop is required.
 - **Nanometrics:** the authorized Harvester package or permitted download
@@ -242,7 +242,7 @@ leaves `INSTALL-REPORT.txt`: send that file back. Then continue with step 6.
 7. Verify email, Tailscale/SSH and any VNC access. Resolve the actual access
    policy and credential issues before relying on remote maintenance.
 8. Complete the recorder, interruption-recovery and physical power/wake checks
-   in [docs/VALIDATION.md](docs/VALIDATION.md).
+   in [docs/DESIGN.md](docs/DESIGN.md).
 9. Only after acceptance, enable the approved field service and emergency timer
    for a controlled next boot. Record the installed revision and test results.
 

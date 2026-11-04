@@ -4,7 +4,7 @@ set -Eeuo pipefail
 umask 077
 export TZ=UTC LC_ALL=C
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-for library in common config hardware harvest upload starlink notification remote sources workflow status; do
+for library in common config hardware harvest deployments upload starlink notification remote sources workflow status; do
     # shellcheck source=/dev/null
     source "$SCRIPT_DIR/lib/$library.sh"
 done

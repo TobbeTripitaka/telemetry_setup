@@ -1,398 +1,91 @@
 # TELE: remote seismic data collection
 
-TELE collects data from seismic stations where power and internet
-access are limited. It runs on an Ubuntu edge computer connected to a Nanometrics
-Pegasus recorder and uses Starlink to upload data to Dropbox.
+TELE collects data from seismic stations where power and internet access are
+limited. It runs on an Ubuntu edge computer connected to a Nanometrics Pegasus
+recorder and uses Starlink to upload data to Dropbox.
 
-The idea is simple: the BIOS wakes the computer, it harvests the data from the
-recorder over USB, uploads it to Dropbox, sends a status email and switches off
-again. The recorder keeps recording while the computer is off, so neither the
-computer nor Starlink needs to run all the time.
+The BIOS wakes the computer, it harvests the recorder over USB, uploads the data to
+Dropbox, sends a status email and switches off again. The recorder keeps recording
+while the computer is off, so neither the computer nor Starlink runs all the time.
 
 In order of importance:
 
-1. **The computer always switches off** after a bounded time, even when the
-   internet is poor, so the battery is not drained.
-2. **All data reaches Dropbox sooner or later.** Nothing is marked as done until
-   it is verified in Dropbox, and anything unfinished resumes at the next wake.
-3. **It keeps running unattended** and is maintainable: one installer, one status
-   email per run, and a settings file in Dropbox that the station reads at every
-   wake.
+1. **The computer always switches off** after a bounded time, even when the internet
+   is poor, so the battery is not drained.
+2. **All data reaches Dropbox sooner or later.** A day counts as done only when its
+   files are verified in Dropbox; anything unfinished resumes at the next wake.
+3. **It runs unattended and is maintainable:** one installer, one status email per
+   run, and a settings file in Dropbox that the station reads at every wake.
 
 The system has been running in Australia, and the Antarctic station has been
-transmitting data since February 2026. I am still testing this software update,
-so please contact me before using it at an unattended field site.
+transmitting data since February 2026. This software version is still being tested
+on hardware, so contact the author before using it at an unattended field site.
 
 <img src="img/GRIT%20_Final.png" width="120" alt="GRIT project logo">
 
-## Hardware and setup
+## What you get
 
-The setup uses a Shuttle SPCEL03, a Starlink Mini, and a USB-controlled relay.
-The BIOS wakes the computer once a week. USB 5 V operates the relay, so Starlink
-powers up with the computer and switches off when the computer shuts down.
-
-<img src="img/photo_4.JPG" width="650" alt="TELE test setup with the computer, Pegasus recorder and Starlink antenna in the enclosure">
-
-Test setup. Photo: Tobias Stål.
-
-The full [installation and field deployment guide](INSTALLATION.md) includes
-the hardware choices, supplier links, photographs, Ubuntu setup, credentials,
-remote access and testing instructions. Start there if you are building a station.
-
-## Quick start: one bundle per unit (recommended)
-
-1. **You (on your own computer):** fill in a setup file for the unit
-   ([`credentials.example.txt`](credentials.example.txt): Gmail app password,
-   Dropbox token, Tailscale key, computer name and password, optional location
-   label) and run `scripts/make-bundle.sh --setup unit.conf --deb Harvester.deb --encrypt`.
-   It produces one zip with the exact code, the settings and the Nanometrics package.
-2. **The technician:** puts the folder on the Desktop, connects the computer to the
-   internet (Starlink or a cable) and the recorder to USB, and runs
-   `sudo bash INSTALL.sh`. It can take a while on a poor connection; it retries and
-   runs until done. It sets the computer name, account, password and automatic
-   login, installs everything, checks the recorder, Dropbox and email, writes
-   `INSTALL-REPORT.txt`, sends you a setup email and restarts the computer.
-3. **After the restart:** `sudo /opt/tele/current/tele.sh --check`, then a real bench
-   run with `sudo /opt/tele/current/tele.sh --once`.
-4. **Keep a unit on for upgrades:** switch it on, log in (mosh/SSH) and run
-   `sudo tele-maintenance on`; arm again with `sudo tele-maintenance off`
-   ([details](INSTALLATION.md#start-the-computer-and-keep-it-on-for-upgrades)).
-5. **Field activation** (the computer then powers off after every run):
-   `sudo bash INSTALL.sh --enable-field`, then check BIOS wake and the USB relay
-   physically.
-
-Details and every setting: [INSTALLATION.md](INSTALLATION.md#ship-a-ready-to-run-bundle-recommended).
-To move a unit that already has data to a new station name, see
-[the rename step](INSTALLATION.md#rename-a-station-that-already-holds-data).
-
-## Where is everything?
-
-Run `sudo /opt/tele/current/tele.sh --status` for a read-only overview: what is
-waiting, what is uploaded and where each recorder's files are. The full layout is
-in [INSTALLATION.md](INSTALLATION.md#where-is-everything).
-
-## Limits that protect the battery
-
-A field run is bounded at several levels; the first one reached ends the work and
-the computer powers off. Unfinished days stay pending and resume at the next wake.
-
-| Limit | Default | What it bounds |
-|---|---|---|
-| `NETWORK_WAIT_SECONDS` | 20 min | Waiting for Starlink and Dropbox after boot |
-| `HARVEST_BUDGET_SECONDS` | 1 h | Exporting and uploading, shared by all recorders |
-| `RUN_LIMIT_SECONDS` | 2 h after boot | The whole run: past it no network or harvester call starts |
-| `EMERGENCY_SECONDS` | 4 h after boot | Separate systemd timer that powers off no matter what |
-| `START_DATE` | none | Skips recorder history older than this day, so a new unit does not upload years of old data |
-
-The first four are set in the setup file; all but the emergency timer can also be
-changed from the Dropbox `config.txt` (see [Station configuration](#station-configuration)).
-
-## Where to start (manual setup)
-
-I recommend working through a new station in this order. Keep automatic field
-operation disabled until the individual tests pass.
-
-| Stage | What to do | Detailed instructions |
-|---|---|---|
-| Hardware | Assemble the computer, recorder, relay and Starlink; check poweroff and BIOS wake-up | [Hardware and enclosure](INSTALLATION.md#hardware-and-enclosure) |
-| Ubuntu and software | Install dependencies, find the native Harvester and identify the correct recorder disk | [Ubuntu setup](INSTALLATION.md#install-and-prepare-ubuntu) |
-| Accounts | Choose the project Dropbox identity and create a Gmail app password for email | [Dropbox accounts](INSTALLATION.md#choose-the-upload-account), [Gmail app password](INSTALLATION.md#gmail-app-password-setup) |
-| Configuration | Set local hardware details and matching local/remote `station` labels | [Configuration file map](INSTALLATION.md#configuration-file-map) |
-| Bench tests | Check a real export, a small verified upload, email and remote access separately | [First-harvest checks](INSTALLATION.md#check-the-first-export-before-uploading), [Bench testing](INSTALLATION.md#bench-testing-and-field-activation) |
-| Field operation | Review the power deadlines, enable the services and observe a full wake/shutdown cycle | [Field activation](INSTALLATION.md#explicit-field-mode-activation) |
-
-Command blocks in the guide identify the computer or session where they run.
-The Mac is useful for Git, browser authorization and SSH; Ubuntu runs the
-recorder commands and the field services.
-
-There are three different tools involved: **Git** updates source code from
-GitHub, **rclone** transfers data to Dropbox, and **rsync** is not used by TELE
-for Dropbox authentication or uploads. Pulling the repository does not install
-the software or update an already installed station.
-
-## How it works
-
-TELE uses Bash to call the native Pegasus Harvester and rclone for Dropbox
-transfers. It exports waveform miniSEED, SOH, legacy SOH and logs without creating
-a large PSF image.
-
-Each run:
-
-1. Loads the station settings and checks its configuration.
-2. Checks Dropbox and reads Starlink diagnostics.
-3. Runs each configured recorder independently, retrying its pending uploads
-   before identifying its whole-disk by-id path and serial.
-4. Exports the required UTC days into separate local working directories.
-5. Uploads files and verifies their Dropbox-compatible content hashes.
-6. Records progress only after verification.
-7. Uploads logs, attempts a status email and opens a maintenance window if requested.
-8. In field mode, exits into systemd-controlled poweroff. Bench mode does not shut down.
-
-An unfinished export is not uploaded as if it were complete. Completed exports
-that have not been verified in Dropbox stay on the computer for another attempt,
-and that retry does not depend on the recorder still being connected.
-
-By default, the last verified daily batch is also kept locally. Older verified
-payloads are removed, while the small progress records and recent logs remain.
-
-## Dropbox layout
-
-Each station has its own directory and configuration:
+The same seismic layout locally and in Dropbox. Paths are the ones written by the
+Pegasus Harvester application, so network and station codes come from the recorder
+and redeployments need no setting:
 
 ```text
-<dropbox_root>/tele/<station_name>/
-  config.txt
-  pegasus_harvester/
-    <recorder_serial>/
-      <native Harvester paths: 2023/..., logs/2023/..., soh/2023/...>
-      tele_logfiles/              (telemetry logs of this recorder: <day>.json, .harvest.log, ...)
-        instrument/               (digitizer-info, one file per run)
-  tele_logfiles/
-    <run logs and diagnostics of the computer>
-  <future_extension>/
+Dropbox: <dropbox_root>/tele/<computer>/            Local: /home/<account>/data/Nanometrics/
+  config.txt                  (your instructions to this computer)
+  Nanometrics/
+    2024/Z9/DMT5/HHE.D/Z9.DMT5..HHE.D.2024.061      waveforms, one file per channel and UTC day
+    logs/2024/Z9/DMT5/LOG.D/Z9.DMT5..LOG.D.2024.061 recorder log, one file per day
+    soh/2024/Z9/DMT5/VCO.D/Z9.DMT5..VCO.D.2024.061  state of health, one folder per type
+    Z9.DMT5_20231229T033647Z.json                    deployment record (see below)
+  tele_logfiles/              run logs; harvest/ holds one receipt per day
 ```
 
-The Harvester's file paths are left unchanged. The script requests daily waveform
-files with `-d=24` and does not replace the native path pattern with `-p`.
+The deployment record is what the recorder stored at deployment (network, station,
+channels, sensors, position). The Harvester application turns it into a StationXML
+file of the same name; the command line cannot, so the `.json` is kept instead and
+can be converted later.
 
-There is no recorder-erasure command or Dropbox deletion in the collection
-workflow. Native SOH/log naming and files crossing day boundaries still need
-checking with the actual recorder before deployment.
+## How a run works
 
-For shared/team Dropbox storage, authorize the account that has accepted the
-invitation and has permission to add files. I recommend a project-owned uploader
-account rather than leaving a field computer tied to a personal account.
+1. Wait (bounded) for the network, read the settings from Dropbox, check Starlink.
+2. Find the recorder, upload any complete day still waiting from an earlier run.
+3. Save new deployment records.
+4. For every UTC day not yet verified (oldest first): export data and logs with the
+   native Harvester, add that day's state-of-health files, upload, verify the hashes
+   in Dropbox, and only then record the day as done.
+5. Upload the run log, send the status email, optionally wait for a maintenance
+   login, then power off through systemd.
 
-`DROPBOX_ROOT` accepts spaces and preserves a leading `/`, including team-root
-paths such as `/Research Team/Project`. Check the exact destination with rclone
-and a small test upload before collecting a full backlog; a valid path is not
-proof that the authorized account has access to the intended team folder.
+Facts about the recorder that shaped this (measured, see
+[docs/DESIGN.md](docs/DESIGN.md)): state-of-health cannot be selected by time, so it
+is read once per run and split by day; files are written without extension
+(`-ext=0`) as the Harvester application does; a day window can also write a stub of
+the neighbouring day, which is dropped; the same day exported twice has identical
+samples but not always identical bytes.
 
-## Install and test
+## Quick start
 
-Use [INSTALL.sh](INSTALL.sh) on the Ubuntu station. Start with the
-[commented credentials and setup example](credentials.example.txt) and follow the
-[master installer instructions](INSTALLATION.md#master-installer); do not put
-real credentials in the repository.
+| Who | Does what | Where |
+|---|---|---|
+| Project lead | Makes one folder per computer with the settings, passwords and the Harvester package | [Prepare a station](INSTALLATION.md#prepare-a-station) |
+| Technician | Installs, tests one run, keeps the computer on for upgrades | [TECHNICIAN.md](TECHNICIAN.md) |
+| Project lead | Sets the BIOS wake-up, tests the USB relay, switches field mode on | [BIOS wake-up and the USB relay](INSTALLATION.md#bios-wake-up-and-the-usb-relay) |
 
-To deploy several units, `scripts/make-bundle.sh` packs the tested code, one unit's
-filled setup file and the Nanometrics package into a single zip; the technician
-unzips it and runs `sudo bash INSTALL.sh`
-(see [the bundle instructions](INSTALLATION.md#ship-a-ready-to-run-bundle-recommended)).
+To keep a computer on for upgrades: `sudo tele-maintenance on`; to arm it again:
+`sudo tele-maintenance off`.
 
-`credentials.example.txt` is tracked deliberately; it contains only placeholders
-and explanations of the Gmail app password, Dropbox OAuth, Tailscale auth key and
-VNC password. Copy it to a protected private file before editing, never replace
-the placeholders in the tracked example. `config/credentials.txt.example` is the
-separate email-only template for the installed runtime.
+## Repository
 
-```bash
-# Run on: Ubuntu station, from the reviewed checkout.
-bash INSTALL.sh --mode plan
-sudo bash INSTALL.sh --config /root/tele-setup.conf --mode confirm
-# For repeated, prepared deployments instead:
-sudo bash INSTALL.sh --config /root/tele-setup.conf --mode auto
-```
+- `INSTALL.sh`: the one installer (packages, Harvester, rclone, Tailscale, services).
+- `tele.sh` and `lib/`: the collector. `lib/harvest.sh` and `lib/upload.sh` hold the
+  harvest and verified upload; `lib/deployments.sh` the deployment records.
+- `systemd/`: the service and the independent emergency timer. `scripts/`: bundle
+  maker and `tele-maintenance`.
+- `tests/`: `bash tests/run.sh` and `bash tests/installer.sh` run the offline suites
+  (synthetic Harvester, local rclone); `docs/DESIGN.md` lists what only hardware can
+  prove.
+- [CHANGELOG.md](CHANGELOG.md), [SHIPPING.md](SHIPPING.md) (preparing Ubuntu
+  computers), [docs/STARLINK.md](docs/STARLINK.md).
 
-The installer fetches one Git revision, installs dependencies and the supplied
-Nanometrics package, configures Linux, Dropbox, email, Tailscale, VNC and systemd,
-and runs setup checks. It restarts the computer one minute after a successful
-installation (`REBOOT_AFTER=no` turns that off) so the new account and automatic login
-apply, but it never activates shutdown-capable operation unless `--enable-field`
-is explicitly supplied, which enables it for the next boot.
-BIOS wake settings, USB power behaviour and vendor/account authorization still
-need preparation. A normal email/password pair cannot replace Dropbox OAuth.
-
-After installation:
-
-```bash
-# Run on: Ubuntu bench station. Check identity without collecting, emailing or shutting down.
-sudo /opt/tele/current/tele.sh --check
-# A real collection/upload/email run, without a maintenance wait or shutdown.
-sudo /opt/tele/current/tele.sh --once
-```
-
-Both commands refuse to run while the field collector or emergency timer is active.
-Use stable bench power: bench mode deliberately does not provide automatic poweroff.
-
-## Adding recorders and modules
-
-`tele.sh` shows the run sequence from top to bottom. Shared workflow functions
-are in `lib/`; collector implementations belong in `modules/`, with one private
-data-only profile per source in `/etc/tele/sources.d/`.
-
-With no source profiles, the single-recorder settings in `node.conf` keep the
-existing `pegasus_harvester/` layout. Explicit profiles use
-`pegasus_harvester/<source-id>/` so recorders do not overwrite one another; the
-Harvester paths inside remain unchanged. Moving an existing recorder to a profile
-is a deliberate namespace migration, not an automatic relocation of pending files.
-See the [module contract and examples](docs/MODULES.md) before changing that layout.
-
-## Starlink snow melt
-
-The [Starlink instructions](docs/STARLINK.md) cover Ethernet readback and an
-explicitly confirmed attempt to set Off. The local interface exposes the setting,
-but firmware may refuse writes; the supported app setting is
-Settings → Starlink → Snow Melt → Off ([Starlink help](https://starlink.com/en-ps/support/article/123263fe-abc5-60e0-3af1-9e022aeba80a),
-[local API restrictions](https://github.com/sparky8512/starlink-grpc-tools/issues/48)).
-
-TELE does not silently reconfigure the antenna on each wake. Verify the setting
-after a power cycle and firmware changes, and consider snow-obstruction risk
-before disabling heating at a snowy site.
-
-## Collection modes
-
-Most runs should use `incremental`. The other modes are there for checking or
-repairing the archive without changing the normal folder structure.
-
-| Mode | What it does |
-|---|---|
-| `incremental` | Collects unverified days and revisits recent/open days, skipping identical uploaded contents. |
-| `reconcile` | Re-exports the recorder's retained history and uploads only missing or changed files. |
-| `reupload` | Re-exports the retained history and deliberately sends every file again for a new request. |
-| `range` | Repairs a specified range of whole UTC days, uploading missing or changed contents. |
-
-`reconcile`, `reupload` and `range` need a `REQUEST_ID`. Keep the same ID while
-a large request is being completed across several wakes, and use a new ID when
-you want to start another request.
-
-## Station configuration
-
-Set the upload label with `station` in `config.txt`. For example,
-`station=station01` sends data to
-`<dropbox_root>/tele/station01/pegasus_harvester/` and logs to
-`<dropbox_root>/tele/station01/tele_logfiles/`.
-
-Keep a private local copy at `/etc/tele/config.txt` so the computer knows which
-Dropbox folder to read at startup. Upload the matching remote copy to
-`<dropbox_root>/tele/station01/config.txt`; its `station` must match the local
-label. This prevents a config copied to the wrong station from redirecting data.
-
-Labels use 1–64 letters, numbers, dots, underscores or hyphens, starting with a
-letter or number. Settings are literal values, not shell commands. The label
-only controls the outer upload/state directories; it does not rename the
-Harvester's native files or change seismic station metadata.
-
-For normal weekly collection:
-
-```ini
-station=station01
-EXECUTE=auto
-HARVEST_MODE=incremental
-HARVEST_BUDGET_SECONDS=3600
-LOCAL_DATA=keep
-```
-
-To leave time for SSH access after collection:
-
-```ini
-station=station01
-EXECUTE=ssh
-HARVEST_MODE=incremental
-MAINTENANCE_IDLE_SECONDS=600
-LOCAL_DATA=keep
-```
-
-To check the full recorder archive without unnecessarily sending matching
-files again:
-
-```ini
-station=station01
-EXECUTE=auto
-HARVEST_MODE=reconcile
-REQUEST_ID=full-check-2026-09
-```
-
-Use `EXECUTE=vnc` for the private virtual desktop, or `HARVEST_MODE=reupload`
-with a new request ID to force a full retransmission. The installation guide
-lists all settings, valid values and date-range examples.
-
-Passwords, Dropbox tokens, device paths and executable paths do not belong in
-the Dropbox configuration. Private credentials and local station identity are
-kept separately on the computer.
-
-For email, `EMAIL_PASSWORD` means a **Gmail app password**, not the normal Google
-password or a two-step verification code. Follow the
-[app-password walkthrough](INSTALLATION.md#gmail-app-password-setup) and the
-[credential/password-change notes](INSTALLATION.md#which-password-or-token-goes-where)
-before entering account details on the station.
-
-## Power and remote access
-
-Battery protection is important here. A failed upload or stuck process must not
-leave the computer and Starlink running indefinitely.
-
-- **Collection:** the default one-hour allowance is shared between sources,
-  including pending transfers and device inspection. External calls are bounded;
-  termination grace and local bookkeeping can extend wall-clock time slightly.
-- **Normal shutdown:** the systemd service requests poweroff when the collector
-  exits, including after a failure.
-- **Emergency shutdown:** a separate timer requests poweroff four hours after
-  boot, including during a remote session.
-- **Maintenance:** `ssh` and `vnc` modes wait for 10 idle minutes by default after
-  the work is finished. Detected connections reset that countdown.
-- **Auto mode:** finishes the work and reporting without a maintenance wait.
-
-I use Tailscale for remote access and a private VNC desktop when a graphical
-session is useful. VNC is reached through an SSH tunnel rather than a public port.
-
-There is no independent hardware power-cut timer in this setup. The software
-timer protects against a stalled collection script, but it cannot guarantee
-shutdown if Ubuntu or the firmware itself freezes.
-
-## Testing and deployment
-
-The automated suite covers configuration, station isolation, acquisition failures,
-hash verification, retries, retention and maintenance timing. It uses a synthetic
-Harvester and real local rclone file operations, not a real recorder or live Dropbox.
-
-On an Ubuntu development or bench machine with the dependencies installed:
-
-```bash
-# Run on: Ubuntu bench/development machine, inside the source checkout.
-bash tests/run.sh
-bash tests/installer.sh
-shellcheck -S warning -e SC2034 INSTALL.sh tele.sh lib/common.sh lib/config.sh \
-  lib/hardware.sh lib/harvest.sh lib/upload.sh lib/notification.sh \
-  lib/remote.sh lib/workflow.sh lib/sources.sh lib/starlink.sh modules/*.sh scripts/*.sh tests/*.sh
-```
-
-SC2034 is excluded because the sourced Bash modules share configuration variables.
-These tests do not access the recorder, send email or shut down the computer.
-
-Before field use, check real miniSEED completeness, Dropbox interruption recovery,
-SSH/VNC sessions, BIOS wake-up and the physical USB-relay shutdown. Starting the
-field service is different from running the tests: it can power the computer off.
-
-The entry point is `tele.sh`, with `tele.service` and the `tele-power-guard.timer`.
-Existing installations need their paths, units and local config updated together;
-read the [rename and station-label notes](docs/RENAME.md) before enabling them.
-
-Use a tested release or exact Git commit for each station. Do not automatically
-pull `main` on every wake, and keep credentials, pending data and progress records
-outside the application checkout.
-
-If updating an existing checkout, check for local edits before pulling.
-The [update and recovery instructions](INSTALLATION.md#pulling-updates-to-your-source-checkout)
-explain the difference between updating Git, installing a release and changing
-the upload destination.
-
-## Documentation and next steps
-
-- **[Installation guide](INSTALLATION.md):** hardware, photos, suppliers and the
-  complete setup procedure.
-- **[Changelog](CHANGELOG.md):** what changed in each version.
-- **[Design notes](docs/DESIGN.md):** collection, verification and recovery behaviour.
-- **[Test checklist](docs/VALIDATION.md):** checks to complete before deployment.
-
-The installer and module framework still need end-to-end bench testing on the
-target Ubuntu computer. Automated tests use mocks and local files, not a real
-Nanometrics recorder, live Dropbox or antenna. The disabled module template in
-`modules/` is for future collectors.
-
-If you build a station or find something that can be improved, please get in
-touch or open an issue in this repository. I would like to keep the setup
-practical, easy to understand and reliable enough to leave in the field.
-
-Software: `4.1.1`. Documentation updated: 2 November 2026. Record the Git revision as well.
-
+If you build a station or find something that can be improved, please get in touch
+or open an issue. Software: `4.2.0`. Record the Git revision as well.

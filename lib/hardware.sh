@@ -71,6 +71,7 @@ identify_recorder() {
 inspect_volumes() {
     local id output lower upper
     EARLIEST_NS=9223372036854775807 LATEST_NS=0 CLOCK_PRESENT=no
+    SOH_LOWER_NS=0 SOH_UPPER_NS=0 SOH_EXPORT_DONE=no
     for id in 1 2 3 4 5 6 7; do
         output="$LOG_ROOT/$RUN_ID-volume-$id.txt"
         local rc=0
@@ -92,6 +93,7 @@ inspect_volumes() {
         fi
         [[ $lower =~ ^[0-9]{1,19}$ && $upper =~ ^[0-9]{1,19}$ ]] || return 1
         [[ $lower != 0 && $upper != 0 ]] || continue
+        [[ $id != 2 ]] || { SOH_LOWER_NS=$lower; SOH_UPPER_NS=$upper; }
         (( lower <= upper && upper <= 9223372036854775807 )) || return 1
         (( lower >= EARLIEST_NS )) || EARLIEST_NS=$lower
         (( upper <= LATEST_NS )) || LATEST_NS=$upper

@@ -5,6 +5,9 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 BASE=$(mktemp -d)
 trap 'rm -rf "$BASE"' EXIT
 PASS=0 FAIL=0
+# The package belongs to one computer: station= must equal the computer name.
+hostnamectl() { printf 'bench01\n'; }
+SUDO_USER=$(id -un); export SUDO_USER
 test_plan_without_config_or_root() {
     bash "$ROOT/INSTALL.sh" --mode plan >"$BASE/plan"
     grep -q 'PLAN ONLY' "$BASE/plan"
@@ -17,45 +20,14 @@ test_no_internet_stops_early_with_instructions() {
     grep -q 'resolvectl' "$BASE/net"
     bash -c 'source "$1/INSTALL.sh"; curl() { return 0; }; require_internet' _ "$ROOT"
 }
-test_rename_moves_state_and_dropbox_folder() {
-    source "$ROOT/INSTALL.sh"
-    local lib="$BASE/rn/var/lib/tele" calls="$BASE/rn-calls"
-    rm -rf "$BASE/rn" "$calls"
-    mkdir -p "$lib/tele10/sources/S1/verified" "$lib/tele10/sources/S1/pending" "$lib/cad0/pending" "$lib/cad0/verified"
-    printf '{"day":"2025-01-01","destination":"tele_dropbox:telemetry/tele/tele10/pegasus_harvester/S1"}\n' \
-        >"$lib/tele10/sources/S1/verified/2025-01-01.json"
-    STATION_NAME=cad0 STATE_ROOT="$lib/cad0" REMOTE_BASE=tele_dropbox:telemetry/tele/cad0
-    USER_NAME=cad0 RENAME_FROM_USER=nobody-here-xyz REPORT_NOTES="$BASE/rn-notes"; : >"$REPORT_NOTES"
-    cloud() { echo "cloud $*" >>"$calls"; printf 'config.txt\n2025/a.mseed\n2025/b.mseed\n'; }
-    watched() { echo "watched $*" >>"$calls"; }
-    rename_station_data tele10 >/dev/null
-    [[ -d $lib/cad0/sources/S1/verified && ! -e $lib/tele10 ]]
-    jq -e '.destination == "tele_dropbox:telemetry/tele/cad0/pegasus_harvester/S1"' \
-        "$lib/cad0/sources/S1/verified/2025-01-01.json" >/dev/null
-    grep -q 'rclone move tele_dropbox:telemetry/tele/tele10 tele_dropbox:telemetry/tele/cad0' "$calls"
-    grep -q -- '--exclude /config.txt' "$calls"
-    grep -q '^OK Dropbox folder moved: 2 file(s)' "$REPORT_NOTES"
-    # A second run finds nothing local and (stub) the same listing; it must not fail.
-    rename_station_data tele10 >/dev/null
-}
-test_rename_refuses_when_both_hold_data() {
-    source "$ROOT/INSTALL.sh"
-    local lib="$BASE/rn2/var/lib/tele"
-    rm -rf "$BASE/rn2"
-    mkdir -p "$lib/tele10/sources" "$lib/cad0/sources/S9"
-    : >"$lib/tele10/sources/f"; : >"$lib/cad0/sources/S9/g"
-    if (STATION_NAME=cad0 STATE_ROOT="$lib/cad0" REMOTE_BASE=r:telemetry/tele/cad0
-        cloud() { :; }; rename_station_data tele10) >"$BASE/rn2.out" 2>&1; then return 1; fi
-    grep -q 'hold data' "$BASE/rn2.out"
-}
 test_report_for_success_and_failure() {
     source "$ROOT/INSTALL.sh"
     REPORT_NOTES="$BASE/notes"; REPORT_FILE="$BASE/report.txt"; BUNDLE=no
-    printf 'OK Computer name set to cad0\nWARN Test email slow\nTODO Remove the old account\n' >"$REPORT_NOTES"
+    printf 'OK Data folder ready: /home/x/data/Nanometrics\nWARN Test email slow\nTODO Remove the old account\n' >"$REPORT_NOTES"
     declare -gA SETUP=([station]=cad0); USER_NAME=cad0 SHA=abc1234 CURRENT_STAGE='Check recorder, Dropbox and email'
     write_report 0 >/dev/null
     grep -q 'Result:     SUCCESS with 1 warning' "$REPORT_FILE"
-    grep -q 'OK    Computer name set to cad0' "$REPORT_FILE"
+    grep -q 'OK    Data folder ready: /home/x/data/Nanometrics' "$REPORT_FILE"
     grep -q '  - Remove the old account' "$REPORT_FILE"
     grep -q 'Station:    cad0' "$REPORT_FILE"
     write_report 1 >/dev/null
@@ -77,19 +49,6 @@ test_restart_is_scheduled_only_after_success_without_field() {
     declare -gA SETUP=([REBOOT_AFTER]=no)
     ENABLE_FIELD=no schedule_reboot >/dev/null
     [[ ! -s $calls && $REBOOT_SCHEDULED == no ]]
-}
-test_bundle_is_copied_to_the_new_account() {
-    source "$ROOT/INSTALL.sh"
-    local me; me=$(id -un)
-    HOME_BASE="$BASE/home"; mkdir -p "$HOME_BASE/old/Desktop/cad0" "$HOME_BASE/$me"
-    printf 'station=cad0\n' >"$HOME_BASE/old/Desktop/cad0/setup.conf"; : >"$HOME_BASE/old/Desktop/cad0/INSTALL.sh"
-    BUNDLE=yes CONFIG_DIR="$HOME_BASE/old/Desktop/cad0" USER_NAME=$me
-    copy_bundle_to_operator >/dev/null
-    [[ -f $HOME_BASE/$me/Desktop/cad0/setup.conf && -f $HOME_BASE/$me/Desktop/cad0/INSTALL.sh ]]
-    [[ $(stat -c %a "$HOME_BASE/$me/Desktop/cad0/setup.conf") == 600 ]]
-    # Already inside the account's own home: nothing to copy.
-    CONFIG_DIR="$HOME_BASE/$me/Desktop/cad0"
-    if operator_copy_dir >/dev/null; then return 1; fi
 }
 test_run_without_sudo_is_a_clean_error() {
     [[ $EUID != 0 ]] || return 0
@@ -222,17 +181,31 @@ test_operator_password_rules() {
     SETUP[OPERATOR_PASSWORD]=tele99
     validate_setup
 }
-test_computer_name_rules() {
-    local name
-    for name in 'Tele9' 'tele_9' '-tele' 'tele-'; do
-        setup_validation
-        SETUP[COMPUTER_NAME]=$name
-        set +e; (set -e; validate_setup) >/dev/null 2>&1; local rc=$?; set -e
-        [[ $rc != 0 ]] || return 1
-    done
+test_package_for_another_computer_is_refused() {
     setup_validation
-    SETUP[COMPUTER_NAME]=tele9
-    validate_setup
+    SETUP[station]=other-computer
+    set +e; (set -e; validate_setup) >"$BASE/other" 2>&1; local rc=$?; set -e
+    [[ $rc != 0 ]]
+    grep -q "This package is for the computer 'other-computer'" "$BASE/other"
+    grep -q 'hostnamectl set-hostname other-computer' "$BASE/other"
+}
+test_obsolete_rename_keys_are_refused() {
+    local obsolete
+    for obsolete in COMPUTER_NAME RENAME_FROM RENAME_FROM_USER; do
+        printf 'station=bench01\n%s=x\n' "$obsolete" >"$BASE/obsolete.conf"
+        chmod 600 "$BASE/obsolete.conf"
+        set +e; (source "$ROOT/INSTALL.sh"; WORK="$BASE"; CONFIG="$BASE/obsolete.conf"; parse_setup) >"$BASE/obsolete" 2>&1; local rc=$?; set -e
+        [[ $rc != 0 ]] || return 1
+        grep -q 'obsolete' "$BASE/obsolete"
+    done
+}
+test_data_folder_is_created_for_the_operator() {
+    source "$ROOT/INSTALL.sh"
+    HOME_BASE="$BASE/dataf/home"; mkdir -p "$HOME_BASE/$(id -un)"
+    USER_NAME=$(id -un) REPORT_NOTES="$BASE/dataf-notes"; : >"$REPORT_NOTES"
+    install() { if [[ $1 == -d && $2 == -o ]]; then command install -d -m 755 "${@:8}"; else command install "$@"; fi; }
+    make_data_folder
+    [[ -d $HOME_BASE/$USER_NAME/data/Nanometrics ]]
 }
 test_local_data_and_legacy_retain_key() {
     setup_validation
@@ -268,7 +241,7 @@ test_bare_harvester_filename_resolves_next_to_credentials() {
     validate_setup
     [[ $(get HARVESTER_DEB) == "$BASE/pkg2/my.deb" ]]
 }
-test_computer_account_and_autologin_configuration() {
+test_account_password_and_autologin_configuration() {
     source "$ROOT/INSTALL.sh"
     WORK="$BASE/acct-work"; mkdir -p "$WORK"
     GDM_DIR="$BASE/acct/gdm3" LIGHTDM_DIR="$BASE/acct/lightdm" DCONF_DIR="$BASE/acct/dconf"
@@ -276,7 +249,7 @@ test_computer_account_and_autologin_configuration() {
     mkdir -p "$GDM_DIR" "$HOME_BASE/tele9"
     printf '[daemon]\n#AutomaticLoginEnable = true\n#AutomaticLogin = old\nWaylandEnable=false\n' >"$GDM_DIR/custom.conf"
     printf '127.0.0.1 localhost\n127.0.1.1 oldname\n' >"$HOSTS_FILE"
-    USER_NAME=tele9 COMPUTER_NAME=tele9 OPERATOR_PASSWORD=tele99
+    USER_NAME=tele9 OPERATOR_PASSWORD=tele99
     declare -gA SETUP=()
     local calls="$BASE/acct-calls"
     hostnamectl() { echo "hostnamectl $*" >>"$calls"; }
@@ -288,13 +261,12 @@ test_computer_account_and_autologin_configuration() {
     dconf() { echo "dconf $*" >>"$calls"; }
     chown() { :; }
     install() { if [[ $1 == -d && $2 == -o ]]; then command install -d -m 700 "${@:7}"; else command install "$@"; fi; }
-    set_computer_name
     set_operator_account
     set_autologin
-    grep -q 'hostnamectl set-hostname tele9' "$calls"
+    ! grep -q 'hostnamectl set-hostname\|useradd' "$calls"
     grep -qx 'tele9:tele99' "$calls"
     grep -q 'usermod -aG sudo tele9' "$calls"
-    grep -qx '127.0.1.1 tele9' "$HOSTS_FILE"
+    grep -qx '127.0.1.1 oldname' "$HOSTS_FILE"
     grep -qx 'AutomaticLoginEnable=true' "$GDM_DIR/custom.conf"
     grep -qx 'AutomaticLogin=tele9' "$GDM_DIR/custom.conf"
     grep -qx 'WaylandEnable=false' "$GDM_DIR/custom.conf"
@@ -313,7 +285,7 @@ test_autologin_can_be_switched_off() {
 make_test_bundle() {
     local name=$1 out="$BASE/bundle-$1"
     mkdir -p "$out"
-    printf 'station=%s\nCOMPUTER_NAME=%s\n# HARVESTER_URL=https://example.invalid/x.deb\nHARVESTER_SHA256=old\n' "$name" "$name" >"$out/in.conf"
+    printf 'station=%s\n# HARVESTER_URL=https://example.invalid/x.deb\nHARVESTER_SHA256=old\n' "$name" >"$out/in.conf"
     printf 'fake deb' >"$out/PegasusHarvester-test.deb"
     "$ROOT/scripts/make-bundle.sh" --setup "$out/in.conf" --deb "$out/PegasusHarvester-test.deb" \
         --out "$out" >"$out/log" 2>&1

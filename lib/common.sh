@@ -33,19 +33,17 @@ set_station_paths() {
     STATE_ROOT="/var/lib/tele/$STATION_NAME"
     SPOOL="$STATE_ROOT/pending"
     VERIFIED="$STATE_ROOT/verified"
-    OWNERS="$STATE_ROOT/owners"
-    KEPT="$STATE_ROOT/kept"
     LOG_ROOT="/var/log/tele/$STATION_NAME"
     local prefix=$DROPBOX_ROOT
     [[ -z $prefix || $prefix == / ]] || prefix="$prefix/"
     REMOTE_BASE="$RCLONE_REMOTE:${prefix}tele/$STATION_NAME"
-    REMOTE_DATA="$REMOTE_BASE/pegasus_harvester"
+    REMOTE_DATA="$REMOTE_BASE/Nanometrics"
 }
 
 ensure_dirs() {
     # Every local folder is created up front, so a missing directory can never
     # be the reason a run stops. mkdir -p is idempotent.
-    mkdir -p -- "$STATE_ROOT" "$SPOOL" "$VERIFIED" "$OWNERS" "$KEPT" "$LOG_ROOT" || return 1
+    mkdir -p -- "$STATE_ROOT" "$SPOOL" "$VERIFIED" "$LOG_ROOT" "$LOCAL_ARCHIVE" || return 1
 }
 
 free_mib() {
@@ -64,7 +62,7 @@ check_local_storage() {
         log "WARNING: local storage is getting low: ${free} MiB free (collection stops below ${MIN_FREE_MIB} MiB)"
     fi
     if [[ ${LOCAL_DATA:-keep} == keep ]] && (( free < MIN_FREE_MIB * 2 )); then
-        prune_kept $((MIN_FREE_MIB * 2))
+        prune_archive $((MIN_FREE_MIB * 2))
     fi
     return 0
 }

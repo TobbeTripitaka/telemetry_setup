@@ -11,12 +11,13 @@ PASS=0 FAIL=0
 
 setup_test() {
     STATE_ROOT="$BASE/$TEST"
-    SPOOL="$STATE_ROOT/pending" VERIFIED="$STATE_ROOT/verified" OWNERS="$STATE_ROOT/owners"
-    KEPT="$STATE_ROOT/kept" LOG_ROOT="$STATE_ROOT/logs"
+    SPOOL="$STATE_ROOT/pending" VERIFIED="$STATE_ROOT/verified"
+    LOCAL_ARCHIVE="$STATE_ROOT/archive" LOG_ROOT="$STATE_ROOT/logs"
     LOG_FILE="$LOG_ROOT/run.log" RUN_ID=test-run RECORDER_SERIAL=test-recorder
     REMOTE_BASE="$STATE_ROOT/remote"
-    REMOTE_DATA="$REMOTE_BASE/pegasus_harvester"
-    mkdir -p "$SPOOL" "$VERIFIED" "$OWNERS" "$KEPT" "$LOG_ROOT" "$REMOTE_DATA"
+    REMOTE_DATA="$REMOTE_BASE/Nanometrics"
+    SOH_LOWER_NS=0 SOH_UPPER_NS=0 SOH_EXPORT_DONE=no
+    mkdir -p "$SPOOL" "$VERIFIED" "$LOCAL_ARCHIVE" "$LOG_ROOT" "$REMOTE_DATA"
     touch "$LOG_FILE"
     runtime_defaults
     station=test-station STATION_NAME=test-station
@@ -94,7 +95,7 @@ test_station_sets_all_paths() {
     set_station_paths
     [[ $STATION_NAME == FIELD-01 && $EXECUTE == ssh &&
        $REMOTE_BASE == tele_dropbox:my_dropbox_path/tele/FIELD-01 &&
-       $REMOTE_DATA == tele_dropbox:my_dropbox_path/tele/FIELD-01/pegasus_harvester &&
+       $REMOTE_DATA == tele_dropbox:my_dropbox_path/tele/FIELD-01/Nanometrics &&
        $STATE_ROOT == /var/lib/tele/FIELD-01 && $LOG_ROOT == /var/log/tele/FIELD-01 ]]
 }
 test_station_at_remote_root() {
@@ -174,8 +175,12 @@ test_renamed_service_paths() {
 test_success_roundtrip() {
     batch
     upload_batch "$SPOOL/2025-01-01"
-    [[ -f $VERIFIED/2025-01-01.json && -d $KEPT/2025-01-01 && ! -d $SPOOL/2025-01-01 ]]
-    cloud check "$KEPT/2025-01-01/dropbox.sum" "$REMOTE_DATA" --checkfile Dropbox --one-way
+    [[ -f $VERIFIED/2025-01-01.json && ! -d $SPOOL/2025-01-01 ]]
+    # Same seismic layout in Dropbox and in the local archive.
+    [[ -f $REMOTE_DATA/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001 ]]
+    [[ -f $LOCAL_ARCHIVE/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001 ]]
+    # Receipts sit in <computer>/tele_logfiles/harvest, next to Nanometrics/.
+    [[ -f $REMOTE_BASE/tele_logfiles/harvest/2025-01-01.json ]]
 }
 test_failed_harvest_not_ready() {
     export MOCK_HARVEST_MODE=fail
@@ -197,7 +202,7 @@ test_partial_file_not_uploaded() {
 }
 test_local_corruption_blocks_upload() {
     batch
-    printf 'corrupt' >>"$SPOOL/2025-01-01/files/2025/XX/TEST/BHZ.D/2025-01-01.mseed"
+    printf 'corrupt' >>"$SPOOL/2025-01-01/files/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001"
     expect_failure upload_batch "$SPOOL/2025-01-01"
     [[ ! -f $VERIFIED/2025-01-01.json ]]
 }
@@ -247,66 +252,9 @@ test_unrelated_remote_file_preserved() {
 test_wrong_remote_content_repaired() {
     batch
     cloud copy "$SPOOL/2025-01-01/files" "$REMOTE_DATA"
-    printf wrong >"$REMOTE_DATA/2025/XX/TEST/BHZ.D/2025-01-01.mseed"
+    printf wrong >"$REMOTE_DATA/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001"
     upload_batch "$SPOOL/2025-01-01"
-    cloud check "$KEPT/2025-01-01/dropbox.sum" "$REMOTE_DATA" --checkfile Dropbox --one-way
-}
-test_native_name_collision_stops() {
-    mkdir "$STATE_ROOT/a" "$STATE_ROOT/b"
-    printf one >"$STATE_ROOT/a/shared.log"
-    printf two >"$STATE_ROOT/b/shared.log"
-    claim_paths "$STATE_ROOT/a" 2025-01-01
-    expect_failure claim_paths "$STATE_ROOT/b" 2025-01-02
-}
-test_identical_reexport_across_days_allowed() {
-    mkdir "$STATE_ROOT/a" "$STATE_ROOT/b"
-    printf same >"$STATE_ROOT/a/shared.log"
-    printf same >"$STATE_ROOT/b/shared.log"
-    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
-    cloud hashsum Dropbox "$STATE_ROOT/b" --output-file "$STATE_ROOT/b.sum"
-    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum"
-    claim_paths "$STATE_ROOT/b" 2025-01-02 "$STATE_ROOT/b.sum"
-}
-test_changed_reexport_across_days_stops() {
-    mkdir "$STATE_ROOT/a" "$STATE_ROOT/b"
-    printf one >"$STATE_ROOT/a/shared.log"
-    printf two >"$STATE_ROOT/b/shared.log"
-    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
-    cloud hashsum Dropbox "$STATE_ROOT/b" --output-file "$STATE_ROOT/b.sum"
-    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum"
-    expect_failure claim_paths "$STATE_ROOT/b" 2025-01-02 "$STATE_ROOT/b.sum"
-}
-test_changed_log_across_days_kept_under_second_name() {
-    local log=logs/2025/XX/TEST/LOG.D/XX.TEST..LOG.D.2025.001.txt
-    MOCK_LOG_CONTENT=first harvest_day 1735689600 1735776000 incremental none 5
-    upload_batch "$SPOOL/2025-01-01"
-    MOCK_LOG_CONTENT=second harvest_day 1735776000 1735862400 incremental none 5
-    upload_batch "$SPOOL/2025-01-02"
-    [[ $(<"$REMOTE_DATA/$log") == first ]]
-    [[ $(<"$REMOTE_DATA/$log.conflict-2025-01-02") == second ]]
-    [[ -f $REMOTE_DATA/2025/XX/TEST/BHZ.D/2025-01-02.mseed ]]
-    [[ -f $VERIFIED/2025-01-02.json ]]
-    # The same second version on later days is not uploaded again, and a day
-    # with nothing new needs no Dropbox traffic at all.
-    : >"$STATE_ROOT/cloud-calls"
-    MOCK_NO_WAVEFORM=1 MOCK_LOG_CONTENT=second harvest_day 1735862400 1735948800 incremental none 5
-    upload_batch "$SPOOL/2025-01-03"
-    [[ ! -e $REMOTE_DATA/$log.conflict-2025-01-03 ]]
-    [[ -f $VERIFIED/2025-01-03.json ]]
-    ! grep -q -E '^(copy|copyto) ' "$STATE_ROOT/cloud-calls"
-    # A third, different version is still kept.
-    MOCK_NO_WAVEFORM=1 MOCK_LOG_CONTENT=third harvest_day 1735948800 1736035200 incremental none 5
-    upload_batch "$SPOOL/2025-01-04"
-    [[ $(<"$REMOTE_DATA/$log.conflict-2025-01-04") == third ]]
-}
-test_changed_waveform_across_days_still_stops() {
-    mkdir -p "$STATE_ROOT/a/2025/XX" "$STATE_ROOT/b/2025/XX"
-    printf one >"$STATE_ROOT/a/2025/XX/f.mseed"
-    printf two >"$STATE_ROOT/b/2025/XX/f.mseed"
-    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
-    cloud hashsum Dropbox "$STATE_ROOT/b" --output-file "$STATE_ROOT/b.sum"
-    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum" "$STATE_ROOT/c.txt"
-    expect_failure claim_paths "$STATE_ROOT/b" 2025-01-02 "$STATE_ROOT/b.sum" "$STATE_ROOT/c.txt"
+    [[ $(<"$REMOTE_DATA/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001") == 'synthetic waveform 2025-01-01' ]]
 }
 test_email_retries_and_reports_the_reason() {
     mkdir -p "$BASE/fakebin"
@@ -373,26 +321,16 @@ test_run_limit_stops_network_calls() {
 test_status_overview_names_folders_and_counts_days() {
     local root="$BASE/st/cad2" src
     src="$root/sources/SER1"
-    mkdir -p "$src/pending/2025-01-02/files" "$src/verified" "$src/kept/2025-01-01/files" "$src/owners" "$BASE/st/old" "$root/pending"
-    printf 'x' >"$src/pending/2025-01-02/files/a"; printf '{}' >"$src/verified/2025-01-01.json"; printf 'y' >"$src/kept/2025-01-01/files/b"
+    mkdir -p "$src/pending/2025-01-02/files" "$src/verified" "$BASE/st/old" "$root/pending"
+    printf 'x' >"$src/pending/2025-01-02/files/a"; printf '{}' >"$src/verified/2025-01-01.json"
     STATE_ROOT=$root LOG_ROOT="$BASE/st-logs" STATION_NAME=cad2 LOCATION="Mt Brown" REMOTE_BASE=r:telemetry/tele/cad2
     mkdir -p "$LOG_ROOT"; : >"$LOG_ROOT/run1.log"
     local text; text=$(status_report)
     [[ $text == *'station cad2 (Mt Brown)'* && $text == *'Recorder SER1'* ]]
     [[ $text == *'Waiting   1 day(s)'* && $text == *'from 2025-01-02 to 2025-01-02'* ]]
     [[ $text == *'Uploaded  1 day(s) verified in Dropbox, 2025-01-01 to 2025-01-01'* ]]
-    [[ $text == *'Local copy 1 day(s)'* && $text == *'run1.log'* && $text == *'earlier name'* ]]
+    [[ $text == *'run1.log'* && $text == *'earlier name'* && $text == *'Nanometrics'* ]]
     [[ ! -e $root/quarantine ]]    # read-only: nothing was created
-}
-test_open_day_update_rewrites_claim() {
-    mkdir "$STATE_ROOT/a"
-    printf one >"$STATE_ROOT/a/day.mseed"
-    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
-    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum"
-    printf longer >"$STATE_ROOT/a/day.mseed"
-    cloud hashsum Dropbox "$STATE_ROOT/a" --output-file "$STATE_ROOT/a.sum"
-    claim_paths "$STATE_ROOT/a" 2025-01-01 "$STATE_ROOT/a.sum"
-    [[ $(sed -n 2p "$OWNERS"/*) == "$(cut -c1-64 "$STATE_ROOT/a.sum")" ]]
 }
 test_network_wait_retries_until_reachable() {
     NETWORK_WAIT_SECONDS=120
@@ -419,11 +357,53 @@ test_symlink_stops() {
     ln -s /etc/passwd "$STATE_ROOT/links/file"
     expect_failure validate_paths "$STATE_ROOT/links"
 }
+test_day_export_drops_files_of_neighbouring_days() {
+    MOCK_LOG_CONTENT=today MOCK_PREVIOUS_DAY_STUB=1 harvest_day 1735776000 1735862400 incremental none 5
+    [[ -f $SPOOL/2025-01-02/files/logs/2025/XX/TEST/LOG.D/XX.TEST..LOG.D.2025.002 ]]
+    [[ ! -e $SPOOL/2025-01-02/files/logs/2025/XX/TEST/LOG.D/XX.TEST..LOG.D.2025.001 ]]
+}
+test_native_names_have_no_extension() {
+    MOCK_ARGUMENT_LOG="$STATE_ROOT/args" batch
+    grep -qx -- '-ext=0' "$STATE_ROOT/args"
+    grep -qx -- '-harvestSoh=0' "$STATE_ROOT/args"
+}
+test_soh_exported_once_and_merged_by_day() {
+    SOH_LOWER_NS=1735603200000000000 SOH_UPPER_NS=1735776000000000000
+    batch
+    harvest_day 1735776000 1735862400 incremental none 5
+    [[ $(<"$SPOOL/2025-01-01/files/soh/2025/XX/TEST/VCO.D/XX.TEST..VCO.D.2025.001") == 'synthetic soh 001' ]]
+    [[ ! -e $SPOOL/2025-01-01/files/soh/2025/XX/TEST/VCO.D/XX.TEST..VCO.D.2025.002 ]]
+    [[ -f $SPOOL/2025-01-02/files/soh/2025/XX/TEST/VCO.D/XX.TEST..VCO.D.2025.002 ]]
+    [[ $(grep -c 'Exporting state-of-health once' "$LOG_FILE") == 1 ]]
+}
+test_failed_soh_export_blocks_the_day() {
+    SOH_LOWER_NS=1735603200000000000 SOH_UPPER_NS=1735776000000000000
+    export MOCK_HARVEST_MODE=fail
+    expect_failure ensure_soh_export 5
+}
+test_deployment_record_saved_with_xml_style_name() {
+    DEVICE=/dev/never-used
+    export_deployments
+    [[ -f $REMOTE_DATA/XX.TEST_20250101T025320Z.json ]]
+    [[ -f $LOCAL_ARCHIVE/XX.TEST_20250101T025320Z.json ]]
+    jq -e '.station.stationCode == "TEST"' "$REMOTE_DATA/XX.TEST_20250101T025320Z.json" >/dev/null
+    # Already uploaded: no second transfer.
+    : >"$STATE_ROOT/cloud-calls"
+    export_deployments
+    ! grep -q '^copyto ' "$STATE_ROOT/cloud-calls"
+}
+test_undecodable_deployment_record_is_reported() {
+    DEVICE=/dev/never-used
+    export MOCK_BAD_OPAQUE=1
+    expect_failure export_deployments
+    grep -q 'could not be decoded' "$LOG_FILE"
+}
 test_clean_removes_local_data() {
     LOCAL_DATA=clean
     batch
     upload_batch "$SPOOL/2025-01-01"
-    [[ ! -d $KEPT/2025-01-01 && ! -d $SPOOL/2025-01-01 && -f $VERIFIED/2025-01-01.json ]]
+    [[ ! -e $LOCAL_ARCHIVE/2025 && ! -d $SPOOL/2025-01-01 && -f $VERIFIED/2025-01-01.json ]]
+    [[ -f $REMOTE_DATA/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001 ]]
 }
 test_keep_retains_every_verified_day() {
     LOCAL_DATA=keep
@@ -431,7 +411,8 @@ test_keep_retains_every_verified_day() {
     upload_batch "$SPOOL/2025-01-01"
     harvest_day 1735776000 1735862400 incremental none 5
     upload_batch "$SPOOL/2025-01-02"
-    [[ -f $KEPT/2025-01-01/dropbox.sum && -f $KEPT/2025-01-02/dropbox.sum ]]
+    [[ -f $LOCAL_ARCHIVE/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001 &&
+       -f $LOCAL_ARCHIVE/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.002 ]]
 }
 test_low_space_removes_oldest_verified_copy_first() {
     LOCAL_DATA=keep
@@ -439,11 +420,12 @@ test_low_space_removes_oldest_verified_copy_first() {
     upload_batch "$SPOOL/2025-01-01"
     harvest_day 1735776000 1735862400 incremental none 5
     upload_batch "$SPOOL/2025-01-02"
-    free_mib() { [[ -d $KEPT/2025-01-01 ]] && echo 10 || echo 99999; }
+    free_mib() { [[ -f $LOCAL_ARCHIVE/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001 ]] && echo 10 || echo 99999; }
     MIN_FREE_MIB=2048
     check_local_storage
-    [[ ! -d $KEPT/2025-01-01 && -d $KEPT/2025-01-02 ]]
-    grep -q 'removing verified local copy of 2025-01-01' "$LOG_FILE"
+    [[ ! -f $LOCAL_ARCHIVE/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001 &&
+       -f $LOCAL_ARCHIVE/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.002 ]]
+    grep -q 'removing the verified local copy of 2025-01-01' "$LOG_FILE"
     grep -q 'WARNING: local storage is getting low' "$LOG_FILE" || true
 }
 test_low_space_warns_and_never_touches_pending() {
@@ -471,9 +453,9 @@ test_legacy_retain_key_maps_to_local_data() {
     expect_failure runtime_key LOCAL_DATA maybe
 }
 test_ensure_dirs_recreates_missing_folders() {
-    rm -rf "$SPOOL" "$VERIFIED" "$OWNERS" "$KEPT" "$LOG_ROOT"
+    rm -rf "$SPOOL" "$VERIFIED" "$LOCAL_ARCHIVE" "$LOG_ROOT"
     ensure_dirs
-    [[ -d $SPOOL && -d $VERIFIED && -d $OWNERS && -d $KEPT && -d $LOG_ROOT ]]
+    [[ -d $SPOOL && -d $VERIFIED && -d $LOCAL_ARCHIVE && -d $LOG_ROOT ]]
 }
 test_auto_recorders_get_serial_namespaces() {
     source_test_setup
@@ -483,7 +465,7 @@ test_auto_recorders_get_serial_namespaces() {
     validate_source_set
     [[ ${#SOURCE_FILES[@]} == 2 && ${SOURCE_FILES[0]} == @auto:SN001:/dev/disk/by-id/usb-A ]]
     load_source "${SOURCE_FILES[0]}"
-    [[ $RECORDER_SERIAL == SN001 && $REMOTE_DATA == "$STATION_REMOTE_BASE/pegasus_harvester/SN001" &&
+    [[ $RECORDER_SERIAL == SN001 && $REMOTE_DATA == "$STATION_REMOTE_BASE/Nanometrics" &&
        $STATE_ROOT == "$STATION_STATE_ROOT/sources/SN001" ]]
 }
 test_swapped_recorder_starts_clean_and_old_pending_still_uploads() {
@@ -571,7 +553,7 @@ test_reupload_flag() {
 test_identical_file_not_retransferred() {
     batch
     upload_batch "$SPOOL/2025-01-01"
-    local file="$REMOTE_DATA/2025/XX/TEST/BHZ.D/2025-01-01.mseed" before
+    local file="$REMOTE_DATA/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001" before
     before=$(stat -c '%i:%y' "$file")
     batch
     upload_batch "$SPOOL/2025-01-01"
@@ -698,24 +680,12 @@ test_log_retry_from_older_run() {
     snapshot_log
     [[ $(<"$REMOTE_BASE/tele_logfiles/previous-run.log") == 'old diagnostic' ]]
 }
-test_receipts_sit_next_to_the_recorder_data() {
-    batch
-    upload_batch "$SPOOL/2025-01-01"
-    [[ -f $REMOTE_DATA/tele_logfiles/2025-01-01.json ]]
-    [[ ! -e $REMOTE_BASE/tele_logfiles/receipts ]]
-}
 test_day_log_line_counts_data_logs_and_soh() {
     local root="$STATE_ROOT/kinds"
     mkdir -p "$root/2025/XX/TEST/BHZ.D" "$root/logs/2025/XX/TEST/LOG.D" "$root/soh/2025/XX/TEST/VCO.D"
     : >"$root/2025/XX/TEST/BHZ.D/a"; : >"$root/2025/XX/TEST/BHZ.D/b"
     : >"$root/logs/2025/XX/TEST/LOG.D/c"; : >"$root/x.xml"
     [[ $(count_file_kinds "$root") == 'data 2, logs 1, soh 0, other 1' ]]
-}
-test_instrument_info_saved_once_per_run() {
-    RECORDER_SERIAL=SN001
-    printf 'serial SN001\n' >"$LOG_ROOT/$RUN_ID-digitizer.txt"
-    upload_instrument_info
-    compgen -G "$REMOTE_DATA/tele_logfiles/instrument/SN001_*_digitizer-info.txt" >/dev/null
 }
 test_poweroff_follows_the_field_marker() {
     grep -q 'FIELD_ENABLED' "$ROOT/systemd/tele.service"
@@ -754,7 +724,7 @@ test_dropbox_team_root_and_spaces() {
     node_key DROPBOX_ROOT '/Research Team/Project/'
     set_station_paths
     [[ $REMOTE_BASE == 'tele_dropbox:/Research Team/Project/tele/field01' ]]
-    [[ $REMOTE_DATA == "$REMOTE_BASE/pegasus_harvester" ]]
+    [[ $REMOTE_DATA == "$REMOTE_BASE/Nanometrics" ]]
     node_key DROPBOX_ROOT /
     set_station_paths
     [[ $REMOTE_BASE == tele_dropbox:/tele/field01 ]]
@@ -764,6 +734,27 @@ test_dropbox_unsafe_roots_rejected() {
     for value in '../team' '/team/../other' 'a//b' $'team\nbad' 'team\bad' '/./team'; do
         expect_failure node_key DROPBOX_ROOT "$value"
     done
+}
+test_full_cycle_two_days_gives_one_seismic_tree_with_soh() {
+    # Two UTC days in one run: waveform, log and SOH per day end up in the same
+    # Nanometrics layout in Dropbox and in the local archive; a rerun does nothing.
+    SOH_LOWER_NS=1735603200000000000 SOH_UPPER_NS=1735948800000000000
+    EARLIEST_NS=1735689600000000000 LATEST_NS=1735862399999999999
+    HARVEST_BUDGET_SECONDS=60 START_DATE=''
+    export MOCK_LOG_CONTENT=log
+    harvest_cycle
+    local tree
+    for tree in "$REMOTE_DATA" "$LOCAL_ARCHIVE"; do
+        [[ -f $tree/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.001 &&
+           -f $tree/2025/XX/TEST/BHZ.D/XX.TEST..BHZ.D.2025.002 &&
+           -f $tree/logs/2025/XX/TEST/LOG.D/XX.TEST..LOG.D.2025.001 &&
+           -f $tree/soh/2025/XX/TEST/VCO.D/XX.TEST..VCO.D.2025.001 &&
+           -f $tree/soh/2025/XX/TEST/VCO.D/XX.TEST..VCO.D.2025.002 ]] || return 1
+    done
+    [[ -f $VERIFIED/2025-01-01.json && -f $VERIFIED/2025-01-02.json ]]
+    [[ $(grep -c 'Verified in Dropbox' "$LOG_FILE") == 2 ]]
+    grep -q 'data 1, logs 1, soh 1' "$LOG_FILE"
+    [[ $(grep -c 'Exporting state-of-health once' "$LOG_FILE") == 1 ]]
 }
 test_destination_change_revisits_verified_days() {
     batch
@@ -791,7 +782,7 @@ test_sources_keep_legacy_paths() {
     discover_sources
     [[ ${SOURCE_FILES[0]} == @single-pegasus ]]
     load_source "${SOURCE_FILES[0]}"
-    [[ $STATE_ROOT == "$STATION_STATE_ROOT" && $REMOTE_DATA == "$STATION_REMOTE_BASE/pegasus_harvester" ]]
+    [[ $STATE_ROOT == "$STATION_STATE_ROOT" && $REMOTE_DATA == "$STATION_REMOTE_BASE/Nanometrics" ]]
 }
 test_sources_isolated_namespaces() {
     source_test_setup
@@ -801,22 +792,15 @@ test_sources_isolated_namespaces() {
     validate_source_set
     load_source "${SOURCE_FILES[0]}"
     local first=$SPOOL
-    [[ $REMOTE_DATA == "$STATION_REMOTE_BASE/pegasus_harvester/pegasus01" ]]
+    [[ $REMOTE_DATA == "$STATION_REMOTE_BASE/Nanometrics" ]]
     load_source "${SOURCE_FILES[1]}"
     [[ $SPOOL != "$first" && $RECORDER_SERIAL == recorder02 &&
-       $REMOTE_DATA == "$STATION_REMOTE_BASE/pegasus_harvester/pegasus02" ]]
+       $REMOTE_DATA == "$STATION_REMOTE_BASE/Nanometrics" ]]
 }
 test_duplicate_recorder_profiles_rejected() {
     source_test_setup
     profile_fixture one recorder01
     profile_fixture two recorder01
-    discover_sources
-    expect_failure validate_source_set
-}
-test_case_colliding_source_names_rejected() {
-    source_test_setup
-    profile_fixture North recorder01
-    profile_fixture north recorder02
     discover_sources
     expect_failure validate_source_set
 }

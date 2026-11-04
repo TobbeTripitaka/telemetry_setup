@@ -97,46 +97,13 @@ if [[ -n $LEFT && $DIR_ONLY == no ]]; then
     die 'Fill in every REPLACE_WITH value, or comment out optional lines with #'
 fi
 
-cat >"$DIR/README-TECHNICIAN.txt" <<EOF
-TELE station installation: $NAME
-=================================
-
-This folder holds PASSWORDS (setup.conf). Do not email, upload or share it.
-
-1. Put this whole folder on the Desktop (unzip it first if it is a .zip).
-2. Plug the Pegasus recorder into USB and the computer into a network cable with
-   internet access.
-3. Open a terminal IN this folder (right-click the folder, "Open in Terminal"):
-
-       sudo bash INSTALL.sh
-
-   Enter the computer's password when asked. It runs by itself for about 10 to 30
-   minutes and prints what it does. It does NOT switch on field operation or
-   power the computer off.
-4. If it stops with an ERROR, fix what it says and run the same command again.
-   It is safe to repeat. If you cannot fix it, send the text of the ERROR line.
-5. When it says "Installed TELE revision ...", the computer restarts by itself after
-   one minute (cancel with: sudo systemctl stop tele-install-reboot.timer). It then logs in by itself as the new
-   account. Log in over SSH or at the screen as that account and run:
-
-       sudo /opt/tele/current/tele.sh --check
-
-   and send the output to the project lead. The installer also left a short
-   report, INSTALL-REPORT.txt, in this folder (and /var/log/tele-install-report.txt):
-   send it to the project lead as well. It says whether everything succeeded.
-6. BIOS wake-up and the USB relay port are set on the computer itself; follow
-   INSTALLATION.md in this folder ("Configure BIOS wake-up and shutdown behaviour"
-   and "Choose and test the USB relay-control port").
-7. Switch on field operation ONLY when the project lead says so:
-
-       sudo bash INSTALL.sh --enable-field
-
-8. When the installation has been accepted, delete this folder:
-
-       sudo rm -rf <path of this folder>
-
-Revision: $COMMIT
-EOF
+# The technician's page is TECHNICIAN.md (in the repository); the bundle also gets a
+# plain-text copy with this station's name and the revision.
+{
+    printf 'TELE station installation: %s\n\n' "$NAME"
+    sed -e 's/^```.*$//' -e 's/^# Technician guide$//' "$DIR/TECHNICIAN.md" | cat -s
+    printf '\nRevision: %s\n' "$COMMIT"
+} >"$DIR/README-TECHNICIAN.txt"
 
 # Checksums of everything except the secrets and the package (the package is
 # checked against HARVESTER_SHA256 instead).

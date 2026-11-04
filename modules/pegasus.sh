@@ -14,8 +14,14 @@ provider_validate() {
 provider_target() { printf '%s\n' pegasus_harvester; }
 provider_check() { identify_recorder && inspect_volumes; }
 provider_collect() {
+    local rc=0
     # Upload recovery does not depend on the recorder being connected today.
     drain_pending || return 1
     provider_check || return 1
-    harvest_cycle
+    # The deployment records (what the XML files are made from) are small and
+    # independent of the waveform days: a problem there is reported, not fatal.
+    export_deployments || { log "WARNING: deployment records incomplete; retried next run"; rc=1; }
+    harvest_cycle || rc=1
+    rm -rf -- "$STATE_ROOT/soh-work"
+    return "$rc"
 }

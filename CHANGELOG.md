@@ -1,17 +1,42 @@
 # Changelog
 
-## 4.1.1 (November 2026)
+## 4.2.0 (November 2026)
+
+Harvest, measured against the Pegasus Harvester application (see docs/DESIGN.md)
+- Files are written without extension (`-ext=0`), exactly as the application does.
+- State-of-health is now collected. The native time window silently returned no SOH
+  files; it is exported once per run without bounds and split by day. The per-day log
+  line counts data, logs and soh files.
+- Files of a neighbouring day (a log stub that a day window also writes) are dropped,
+  so the conflict, owner and second-version bookkeeping is gone.
+- Deployment records: each deployment message in the recorder's operation log is
+  saved as `NN.SSSS_<UTC>Z.json` in the root of the Nanometrics tree. The command
+  line cannot write the StationXML.
+
+Layout
+- One seismic tree, same locally (`/home/<account>/data/Nanometrics`, created by
+  the installer) and in Dropbox (`tele/<computer>/Nanometrics`): year, network,
+  station, channel, plus `logs/` and `soh/`. No per-recorder folder.
+- Receipts and run logs are in `tele/<computer>/tele_logfiles/` (`harvest/` for the
+  per-day receipts).
+
+Installer
+- The computer keeps its name and its account. The rename step, `COMPUTER_NAME`,
+  `RENAME_FROM`, account creation and the Desktop copy are removed. `station=` must
+  equal the computer name; otherwise the installer stops and prints the one command
+  that renames it. `LOCATION` is the free label, for example "Mt Strathcona CAD4".
+
+Power and documentation
 - `sudo tele-maintenance on|off|status` keeps the computer on for upgrades at any
-  moment, also in the middle of a run. The poweroff steps of `tele.service`,
-  `tele-poweroff.service` and the emergency timer now act only while
-  `/etc/tele/FIELD_ENABLED` exists; `systemctl disable` alone never stopped an
-  armed run.
-- The telemetry logs of a recorder (receipts, harvest log, conflict lists) are now in
-  `pegasus_harvester/<serial>/tele_logfiles/`, next to its data; one
-  `instrument/<serial>_<UTC>_digitizer-info.txt` is saved per run. Run logs of the
-  computer stay in `tele/<station>/tele_logfiles/`.
-- The per-day log line counts data, logs and soh files, so a missing SOH export is
-  visible.
+  moment, also in the middle of a run. Poweroff by `tele.service`,
+  `tele-poweroff.service` and the emergency timer happens only while
+  `/etc/tele/FIELD_ENABLED` exists; `systemctl disable` alone never stopped an armed
+  run.
+- New one-page TECHNICIAN.md (also in the bundle as README-TECHNICIAN.txt). README,
+  INSTALLATION and docs/DESIGN rewritten and shortened; the manual-procedure chapters
+  of the old guide are replaced by what INSTALL.sh does.
+
+## 4.1.1 (November 2026)
 - `tele.sh --status`: a read-only overview of the data folders, days waiting, uploaded
   and kept, the latest log and the Dropbox path; the layout is documented.
 - The log line for each uploaded day shows files, MiB and seconds, so a slow link can

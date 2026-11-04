@@ -20,57 +20,6 @@ validate_paths() {
     done < <(find "$root" -mindepth 1 ! -type d -print0)
 }
 
-claim_paths() {
-    # Owner records: line 1 "day:path", line 2 its Dropbox hash. The Harvester
-    # can re-emit an identical out-of-range log/SOH file in every daily export;
-    # identical content is harmless. Different content under one path is not:
-    # for waveform data (first folder is a year) it stops the run; for logs and
-    # other non-waveform files it is recorded in the optional conflicts file
-    # (4th argument) and uploaded under a second name, never overwriting.
-    # Owner lines 3+ list the hashes of second versions already uploaded; the
-    # same second version re-exported on a later day is listed in the skips
-    # file (5th argument) instead of being uploaded again.
-    local root=$1 day=$2 sums=${3:-} conflicts=${4:-} skips=${5:-}
-    local file rel key owner temp hash claimed stored variants
-    while IFS= read -r -d '' file; do
-        rel=${file#"$root/"}
-        key=$(printf '%s' "${rel,,}" | sha256sum)
-        key=${key%% *}
-        owner="$OWNERS/$key"
-        hash=''
-        if [[ -n $sums ]]; then
-            hash=$(awk -v p="$rel" 'length($0) > 66 && substr($0, 67) == p {print substr($0, 1, 64); exit}' "$sums")
-        fi
-        claimed='' stored='' variants=''
-        if [[ -f $owner ]]; then
-            { IFS= read -r claimed; IFS= read -r stored; variants=$(cat); } <"$owner" || true
-            if [[ $claimed != "$day:$rel" ]]; then
-                if [[ -n $hash && $stored == "$hash" ]]; then
-                    log "Identical file re-exported in $day, already claimed by ${claimed%%:*}: $rel"
-                    continue
-                fi
-                if [[ -n $skips && -n $hash && $rel != [0-9][0-9][0-9][0-9]/* &&
-                      $'\n'$variants$'\n' == *$'\n'"$hash"$'\n'* ]]; then
-                    log "Same second version of $rel already uploaded; skipping it in $day"
-                    printf '%s\n' "$rel" >>"$skips" || return 1
-                    continue
-                fi
-                if [[ -n $conflicts && -n $hash && $rel != [0-9][0-9][0-9][0-9]/* ]]; then
-                    log "WARNING: $rel differs from the copy already uploaded for ${claimed%%:*}; keeping both"
-                    printf '%s\n' "$rel" >>"$conflicts" || return 1
-                    continue
-                fi
-                die "Native path reused across days/case variants with different content: $rel. Hardware output layout needs review."
-                return 1
-            fi
-            [[ $stored != "$hash" ]] || continue
-        fi
-        temp=$(mktemp "$OWNERS/.new.XXXXXX") || return 1
-        printf '%s\n%s\n' "$day:$rel" "$hash" >"$temp"
-        atomic_install "$temp" "$owner" || return 1
-    done < <(find "$root" -type f -print0)
-}
-
 validate_batch() {
     local batch=$1
     [[ -f $batch/READY && -d $batch/files && ! -L $batch && ! -L $batch/files ]] || return 1
@@ -94,40 +43,6 @@ validate_batch() {
     [[ $count == "$expected" ]]
 }
 
-prepare_filtered_upload() {
-    # Writes an rclone exclude list for the main copy and a Dropbox-hash list
-    # for verification: skipped files are left out, and each conflicting file
-    # carries its second name.
-    local batch=$1 day=$2 conflicts=$3 skips=$4 verify=$5 rel
-    local exclude=$batch/upload-exclude.txt sums=$batch/dropbox.sum omit=$batch/upload-omit.txt
-    : >"$exclude" || return 1
-    cat -- "$conflicts" "$skips" >"$omit" || return 1
-    while IFS= read -r rel; do
-        # rclone patterns: escape glob characters; the leading slash anchors.
-        # shellcheck disable=SC2001  # bracket-class escaping is clearer with sed
-        printf '/%s\n' "$(sed 's/[][*?{}]/\\&/g' <<<"$rel")" >>"$exclude" || return 1
-    done <"$omit"
-    awk 'NR == FNR {skip[$0]; next} !(substr($0, 67) in skip)' "$omit" "$sums" >"$verify" || return 1
-    while IFS= read -r rel; do
-        awk -v p="$rel" -v d="$day" 'length($0) > 66 && substr($0, 67) == p {print substr($0, 1, 66) p ".conflict-" d; exit}' \
-            "$sums" >>"$verify" || return 1
-    done <"$conflicts"
-}
-
-record_second_versions() {
-    # Called only after the second versions are verified in Dropbox.
-    local batch=$1 conflicts=$2 rel key owner hash temp
-    while IFS= read -r rel; do
-        key=$(printf '%s' "${rel,,}" | sha256sum)
-        owner="$OWNERS/${key%% *}"
-        hash=$(awk -v p="$rel" 'length($0) > 66 && substr($0, 67) == p {print substr($0, 1, 64); exit}' "$batch/dropbox.sum")
-        [[ -f $owner && -n $hash ]] || continue
-        temp=$(mktemp "$OWNERS/.new.XXXXXX") || return 1
-        { cat -- "$owner"; printf '%s\n' "$hash"; } >"$temp" || return 1
-        atomic_install "$temp" "$owner" || return 1
-    done <"$conflicts"
-}
-
 count_file_kinds() {
     # "data 3, logs 5, soh 0, other 1": waveform files sit under a year folder,
     # logs under logs/, state-of-health under soh/; a 0 for soh is worth a look.
@@ -137,16 +52,6 @@ count_file_kinds() {
     logs=$(find "$root/logs" -type f 2>/dev/null | wc -l)
     soh=$(find "$root/soh" -type f 2>/dev/null | wc -l)
     printf 'data %s, logs %s, soh %s, other %s' "$data" "$logs" "$soh" "$((total - data - logs - soh))"
-}
-
-upload_instrument_info() {
-    # The Harvester CLI cannot write StationXML; keep what the recorder reports
-    # about itself next to its data, one file per run, named like the XML files.
-    local info="$LOG_ROOT/$RUN_ID-digitizer.txt" stamp
-    [[ -s $info ]] || return 0
-    stamp=$(date -u +%Y%m%dT%H%M%SZ)
-    cloud copyto "$info" "$REMOTE_DATA/tele_logfiles/instrument/${RECORDER_SERIAL}_${stamp}_digitizer-info.txt" \
-        >>"$LOG_FILE" 2>&1 || log "WARNING: instrument info not uploaded this time"
 }
 
 quarantine_batch() {
@@ -159,8 +64,8 @@ quarantine_batch() {
 }
 
 upload_batch() {
-    local batch=$1 day force temp rel verify started=$SECONDS files_count size_bytes
-    local conflicts=$batch/conflicts.txt skips=$batch/skips.txt
+    local batch=$1 day force temp started=$SECONDS files_count size_bytes
+    local verify=$batch/dropbox.sum receipts=$batch/receipt-out
     if ! validate_batch "$batch"; then
         # A damaged batch must never block this recorder for good: set it aside
         # (kept for inspection) so the day is exported again at the next run.
@@ -170,45 +75,26 @@ upload_batch() {
     fi
     day=$(jq -r .day "$batch/meta.json")
     force=$(jq -r .force "$batch/meta.json")
-    : >"$conflicts" || return 1
-    : >"$skips" || return 1
-    claim_paths "$batch/files" "$day" "$batch/dropbox.sum" "$conflicts" "$skips" || return 1
-    local -a flags=(--checksum) exclude=()
+    local -a flags=(--checksum)
     [[ $force != yes ]] || flags=(--ignore-times)
-    verify=$batch/dropbox.sum
-    if [[ -s $conflicts || -s $skips ]]; then
-        verify=$batch/upload-verify.sum
-        prepare_filtered_upload "$batch" "$day" "$conflicts" "$skips" "$verify" || return 1
-        exclude=(--exclude-from "$batch/upload-exclude.txt")
-    fi
     # An acknowledgment belongs to the destination actually verified, not just a day.
     jq --arg destination "$REMOTE_DATA" '.destination=$destination' \
         "$batch/meta.json" >"$batch/receipt.json" || return 1
     if [[ ! -s $verify ]]; then
-        # Nothing new: every file is already in Dropbox from an earlier day.
-        log "Nothing new to upload for $day"
+        log "Nothing to upload for $day (the recorder holds no files for this day)"
     else
         log "Uploading/verifying $day force=$force"
-        cloud copy "$batch/files" "$REMOTE_DATA" --no-traverse "${flags[@]}" "${exclude[@]}" \
+        cloud copy "$batch/files" "$REMOTE_DATA" --no-traverse "${flags[@]}" \
             >>"$LOG_FILE" 2>&1 || return 1
-        if [[ -s $conflicts ]]; then
-            while IFS= read -r rel; do
-                log "Uploading second version as $rel.conflict-$day"
-                cloud copyto "$batch/files/$rel" "$REMOTE_DATA/$rel.conflict-$day" "${flags[@]}" \
-                    >>"$LOG_FILE" 2>&1 || return 1
-            done <"$conflicts"
-        fi
         cloud check "$verify" "$REMOTE_DATA" --checkfile Dropbox --one-way \
             >>"$LOG_FILE" 2>&1 || return 1
-        record_second_versions "$batch" "$conflicts" || return 1
-        # Small remote receipts to diagnose/rebuild local state later: ONE
-        # transfer for all of them (every round trip is slow on a patchy link).
-        rm -rf -- "$batch/receipt-out" && mkdir "$batch/receipt-out" || return 1
-        cp -- "$batch/receipt.json" "$batch/receipt-out/$day.json" || return 1
-        cp -- "$batch/dropbox.sum" "$batch/receipt-out/$day.dropbox.sum" || return 1
-        [[ ! -f $batch/harvest.log ]] || cp -- "$batch/harvest.log" "$batch/receipt-out/$day.harvest.log" || return 1
-        [[ ! -s $conflicts ]] || cp -- "$conflicts" "$batch/receipt-out/$day.conflicts.txt" || return 1
-        cloud copy "$batch/receipt-out" "$REMOTE_DATA/tele_logfiles" \
+        # Small remote receipts (one transfer: every round trip is slow on a patchy
+        # link) next to the Nanometrics tree: <computer>/tele_logfiles/harvest/.
+        rm -rf -- "$receipts" && mkdir "$receipts" || return 1
+        cp -- "$batch/receipt.json" "$receipts/$day.json" || return 1
+        cp -- "$verify" "$receipts/$day.dropbox.sum" || return 1
+        [[ ! -f $batch/harvest.log ]] || cp -- "$batch/harvest.log" "$receipts/$day.harvest.log" || return 1
+        cloud copy "$receipts" "$REMOTE_BASE/tele_logfiles/harvest" \
             --no-traverse --checksum >>"$LOG_FILE" 2>&1 || return 1
     fi
     # The acknowledgment is the LAST correctness-changing action.
@@ -219,43 +105,39 @@ upload_batch() {
     files_count=$(find "$batch/files" -type f | wc -l)
     size_bytes=$(du -sb "$batch/files" | cut -f1)
     log "Verified in Dropbox: $day ($(count_file_kinds "$batch/files"); $((size_bytes / 1048576)) MiB, $((SECONDS - started)) s)"
+    : "$files_count"
     retain_or_remove_batch "$batch" || return 1
 }
 
 retain_or_remove_batch() {
-    local batch=$1 day
     # Deletion is limited to exact immediate children of the private spool.
+    local batch=$1
     [[ $(dirname -- "$batch") == "$SPOOL" && ! -L $batch &&
        $(basename -- "$batch") =~ ^20[0-9]{2}-[0-9]{2}-[0-9]{2}$ ]] || return 1
-    day=$(basename -- "$batch")
     if [[ ${LOCAL_DATA:-keep} == keep ]]; then
-        # Verified data stays locally until space runs low (see prune_kept).
-        [[ ! -L $KEPT && $KEPT == "$STATE_ROOT/kept" ]] || return 1
-        mkdir -p -- "$KEPT" || return 1
-        rm -rf -- "${KEPT:?}/$day"
-        mv -T -- "$batch" "$KEPT/$day" || return 1
-        sync -f "$STATE_ROOT" || return 1
-    else
-        # LOCAL_DATA=clean: the Dropbox copy was verified, so remove the local one.
-        rm -rf -- "$batch"
-        [[ ! -L $KEPT && $KEPT == "$STATE_ROOT/kept" ]] || return 1
-        rm -rf -- "${KEPT:?}/$day"
+        # The local copy has the same seismic layout as Dropbox: LOCAL_ARCHIVE
+        # (/home/<user>/data/Nanometrics) holds the merged tree of every day.
+        mkdir -p -- "$LOCAL_ARCHIVE" || return 1
+        chown -R --reference="$LOCAL_ARCHIVE" -- "$batch/files" 2>/dev/null || true
+        cp -a -- "$batch/files/." "$LOCAL_ARCHIVE/" || return 1
+        sync -f "$LOCAL_ARCHIVE" || return 1
     fi
+    rm -rf -- "$batch"
 }
 
-prune_kept() {
-    # Remove the oldest verified local copies until $1 MiB is free. Only
-    # directories with a verified acknowledgment are ever removed.
-    local target=$1 dir name free
-    [[ -d $KEPT && ! -L $KEPT && $KEPT == "$STATE_ROOT/kept" ]] || return 0
-    while IFS= read -r dir; do
+prune_archive() {
+    # Remove the oldest local days (already verified in Dropbox) until $1 MiB is free.
+    local target=$1 y j day free
+    [[ -d $LOCAL_ARCHIVE && ! -L $LOCAL_ARCHIVE ]] || return 0
+    while read -r y j; do
         free=$(free_mib) || return 0
         (( free < target )) || return 0
-        name=$(basename -- "$dir")
-        [[ ! -L $dir && -f $VERIFIED/$name.json ]] || continue
-        log "Local storage low (${free} MiB free): removing verified local copy of $name (it remains in Dropbox)"
-        rm -rf -- "$dir"
-    done < <(find "$KEPT" -mindepth 1 -maxdepth 1 -type d -name '20??-??-??' | sort)
+        day=$(date -u -d "$y-01-01 +$((10#$j - 1)) days" +%F 2>/dev/null) || continue
+        [[ -f $VERIFIED/$day.json ]] || continue
+        log "Local storage low (${free} MiB free): removing the verified local copy of $day (it remains in Dropbox)"
+        find "$LOCAL_ARCHIVE" -type f -name "*.$y.$j" -delete
+    done < <(find "$LOCAL_ARCHIVE" -type f -printf '%f\n' |
+        sed -nE 's/.*\.([0-9]{4})\.([0-9]{3})$/\1 \2/p' | sort -u)
     free=$(free_mib) || return 0
     (( free >= target )) ||
         log "WARNING: local storage still low (${free} MiB free) and no verified local copies remain to remove"

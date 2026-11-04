@@ -35,7 +35,7 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MODE=confirm MODE_SET=no CONFIG='' CONFIG_DIR='' PRIVATE_CONF='' BUNDLE=no
 REF=main SOURCE_DIR='' ENABLE_FIELD=no WORK='' CURRENT_STAGE=arguments
 REPORT_NOTES='' REPORT_FILE=/var/log/tele-install-report.txt INSTALL_STARTED=''
-RENAME_FROM='' RENAME_FROM_USER='' REBOOT_SCHEDULED=no
+REBOOT_SCHEDULED=no
 note() {
     # usage: note OK|WARN|TODO text. Collected for the closing report; works from subshells.
     [[ -n $REPORT_NOTES ]] || return 0
@@ -43,7 +43,7 @@ note() {
 }
 write_report() {
     # A short, plain-text summary the technician can read or send back.
-    local rc=$1 result warns=0 line text target
+    local rc=$1 result warns=0 line text
     [[ -n $REPORT_NOTES ]] || return 0
     warns=$(grep -c '^WARN ' "$REPORT_NOTES" 2>/dev/null || true)
     if ((rc)); then result="FAILED at '$CURRENT_STAGE' (status $rc)"
@@ -66,9 +66,6 @@ write_report() {
         if ((rc)); then printf '  FAIL  Stopped at: %s. Fix it and rerun; finished stages are skipped.\n' "$CURRENT_STAGE"; fi
         printf '\nTo do\n'
         if ((rc)); then printf '  - Fix the problem named above, then run again: sudo bash INSTALL.sh\n'; fi
-        if ((rc == 0)) && target=$(operator_copy_dir); then
-            printf '  - After the restart the installer folder is on the Desktop of %s: %s\n' "$USER_NAME" "$target"
-        fi
         { grep -E '^TODO ' "$REPORT_NOTES" || true; } | while IFS= read -r line; do printf '  - %s\n' "${line#TODO }"; done
         if ((rc == 0)); then
             [[ ! -e /var/run/reboot-required ]] || printf '  - Ubuntu asks for a reboot.\n'
@@ -87,29 +84,6 @@ write_report() {
     fi
     text=$(<"$REPORT_FILE")
     printf '\n%s\n\nSaved as %s\n' "$text" "$REPORT_FILE"
-    if ((rc == 0)); then copy_bundle_to_operator; fi
-}
-operator_copy_dir() {
-    # Where the bundle folder is copied for the operator account, if that account
-    # is not the one whose Desktop holds the folder now.
-    [[ $BUNDLE == yes && -n ${USER_NAME:-} && -d $CONFIG_DIR ]] || return 1
-    local base
-    base=$(basename -- "$CONFIG_DIR")
-    case $CONFIG_DIR in "$HOME_BASE/$USER_NAME"/*) return 1 ;; esac
-    printf '%s/%s/Desktop/%s\n' "$HOME_BASE" "$USER_NAME" "$base"
-}
-copy_bundle_to_operator() {
-    # A restart switches to the new account, whose home is empty: put the folder
-    # (installer, report, settings) on that account's Desktop so it is not lost.
-    local target group
-    target=$(operator_copy_dir) || return 0
-    id "$USER_NAME" >/dev/null 2>&1 || return 0
-    group=$(id -gn "$USER_NAME")
-    install -d -o "$USER_NAME" -g "$group" -m 755 "$(dirname -- "$target")" || return 0
-    rsync -a -- "$CONFIG_DIR/" "$target/" || { echo "WARNING: could not copy the installer folder to $target" >&2; return 0; }
-    chown -R "$USER_NAME:$group" -- "$target" || true
-    chmod 600 -- "$target/setup.conf" 2>/dev/null || true
-    printf 'Copy of the installer folder for the account %s: %s\n' "$USER_NAME" "$target"
 }
 upload_report() {
     # Best effort, never changes the installation result.
@@ -170,12 +144,14 @@ parse_setup() {
         [[ $key =~ ^([A-Z][A-Z0-9_]*|station)$ && -z ${SETUP[$key]+yes} ]] ||
             fail 'Invalid or duplicate setup key'
         case "$key" in
+          COMPUTER_NAME|RENAME_FROM|RENAME_FROM_USER)
+            fail "$key is obsolete: the computer keeps its own name. Remove this line (station= must equal the computer name)." ;;
           station|DROPBOX_ROOT|RCLONE_REMOTE|RCLONE_CONFIG_FILE|DROPBOX_TOKEN_JSON|\
           EMAIL_FROM|EMAIL_TO|EMAIL_PASSWORD|RECORDER_DEVICE|RECORDER_SERIAL|SOURCES_JSON|\
           HARVESTER_DEB|HARVESTER_URL|HARVESTER_SHA256|PEGASUS_BIN|\
           OPERATOR_USER|TAILSCALE_AUTH_KEY|ENABLE_VNC|VNC_PASSWORD|\
           STARLINK_ADDRESS|STARLINK_SNOW_MELT|EMERGENCY_SECONDS|DISABLE_SLEEP|\
-          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|COMPUTER_NAME|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|RENAME_FROM|RENAME_FROM_USER|REBOOT_AFTER|DNS_BACKUP|LOCATION|RUN_LIMIT_SECONDS|START_DATE|INSTALL_EMAIL_DETAILS|\
+          SYSTEM_UPGRADE|DISABLE_AUTO_UPDATES|OPERATOR_PASSWORD|AUTOLOGIN|LOCAL_DATA|REBOOT_AFTER|DNS_BACKUP|LOCATION|RUN_LIMIT_SECONDS|START_DATE|INSTALL_EMAIL_DETAILS|\
           EXECUTE|HARVEST_BUDGET_SECONDS|MAINTENANCE_IDLE_SECONDS|RETAIN_LAST_BATCH|NETWORK_WAIT_SECONDS|\
           UPLOAD_TEST|EMAIL_TEST) ;;
           *) fail "Unknown setup key: $key" ;;
@@ -368,27 +344,25 @@ fetch_release() {
 }
 validate_setup() {
     valid_station "$(get station)" || fail 'A valid station is required'
-    USER_NAME=$(get OPERATOR_USER tele)
-    [[ $USER_NAME =~ ^[a-z_][a-z0-9_-]{0,30}$ && $USER_NAME != root ]] || fail 'Invalid OPERATOR_USER'
-    COMPUTER_NAME=$(get COMPUTER_NAME)
-    [[ -z $COMPUTER_NAME || $COMPUTER_NAME =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$ ]] ||
-        fail 'COMPUTER_NAME: lowercase letters, digits and hyphens only (for example tele9)'
+    # The computer keeps its name and its login account. station= must be the
+    # computer's name: the package belongs to one computer, so a different name
+    # means the wrong package was taken to this computer.
+    local host
+    host=$(hostnamectl --static 2>/dev/null || hostname)
+    [[ ${host,,} == "$(get station | tr 'A-Z' 'a-z')" ]] ||
+        fail "This package is for the computer '$(get station)', but this computer is named '$host'. Use the package made for this computer, or rename it first:  sudo hostnamectl set-hostname $(get station | tr 'A-Z' 'a-z')"
+    USER_NAME=$(get OPERATOR_USER "${SUDO_USER:-}")
+    [[ $USER_NAME =~ ^[a-z_][a-z0-9_-]{0,30}$ && $USER_NAME != root ]] ||
+        fail 'Run the installer with sudo from the technician account (not as root), or set OPERATOR_USER'
+    id "$USER_NAME" >/dev/null 2>&1 || fail "The account '$USER_NAME' does not exist on this computer"
+    [[ $(getent passwd "$USER_NAME" | cut -d: -f6) == "$HOME_BASE/$USER_NAME" ]] ||
+        fail "The home folder of $USER_NAME is not $HOME_BASE/$USER_NAME"
     LOCATION=$(get LOCATION)
     [[ -z $LOCATION ]] || valid_location "$LOCATION" ||
-        fail 'LOCATION: up to 60 plain characters (letters, digits, space and . , _ - ( ) / only), for example "Carey Ntk"'
-    RENAME_FROM=$(get RENAME_FROM)
-    [[ -z $RENAME_FROM ]] || valid_station "$RENAME_FROM" || fail 'RENAME_FROM is not a valid station name'
-    RENAME_FROM_USER=$(get RENAME_FROM_USER "$RENAME_FROM")
-    [[ -z $RENAME_FROM_USER || $RENAME_FROM_USER =~ ^[a-z_][a-z0-9_-]{0,30}$ ]] ||
-        fail 'RENAME_FROM_USER is not a valid account name'
-    [[ -z $RENAME_FROM || $RENAME_FROM != "$(get station)" ]] ||
-        fail 'RENAME_FROM is the same as the station name; remove it from the setup file'
+        fail 'LOCATION: up to 60 plain characters (letters, digits, space and . , _ - ( ) / only), for example "Mt Strathcona CAD4"'
     OPERATOR_PASSWORD=$(get OPERATOR_PASSWORD)
     [[ -z $OPERATOR_PASSWORD || $OPERATOR_PASSWORD =~ ^[^[:space:]:]{6,64}$ ]] ||
         fail 'OPERATOR_PASSWORD: 6-64 visible characters, no spaces and no colon'
-    if [[ -z $OPERATOR_PASSWORD ]] && ! id "$USER_NAME" >/dev/null 2>&1; then
-        fail "OPERATOR_PASSWORD is required to create the account '$USER_NAME'"
-    fi
     LOCAL_DATA_VALUE=$(get LOCAL_DATA)
     if [[ -z $LOCAL_DATA_VALUE ]]; then
         [[ $(get RETAIN_LAST_BATCH yes) == no ]] && LOCAL_DATA_VALUE=clean || LOCAL_DATA_VALUE=keep
@@ -576,23 +550,7 @@ check_harvester_version() {
     [[ $report == *'Harvester CL - v'* ]] ||
         fail "The native Harvester did not report a version; run: $BIN version -all"
 }
-set_computer_name() {
-    [[ -n $COMPUTER_NAME ]] || return 0
-    hostnamectl set-hostname "$COMPUTER_NAME"
-    if grep -qE '^127\.0\.1\.1[[:space:]]' "$HOSTS_FILE"; then
-        sed -i -E "s/^127\.0\.1\.1[[:space:]].*/127.0.1.1 $COMPUTER_NAME/" "$HOSTS_FILE"
-    else
-        printf '127.0.1.1 %s\n' "$COMPUTER_NAME" >>"$HOSTS_FILE"
-    fi
-    say "Computer name: $COMPUTER_NAME"
-    note OK "Computer name set to $COMPUTER_NAME"
-}
 set_operator_account() {
-    if ! id "$USER_NAME" >/dev/null 2>&1; then
-        useradd --create-home --shell /bin/bash "$USER_NAME"
-    fi
-    [[ $(getent passwd "$USER_NAME" | cut -d: -f6) == "/home/$USER_NAME" ]] ||
-        fail 'VNC unit requires operator home /home/OPERATOR_USER'
     if [[ -n $OPERATOR_PASSWORD ]]; then
         # printf is a shell builtin, so the password never appears in a process list.
         # A password-quality complaint (for example "contains the user name") is a
@@ -672,9 +630,16 @@ dns_backup() {
     systemctl restart systemd-resolved
     note OK 'Backup DNS servers added (1.1.1.1, 9.9.9.9) for a link that drops out'
 }
+make_data_folder() {
+    # The local copy of the data: the same Y/NN/SSSS/CCC.D layout as in Dropbox.
+    local group dir=$HOME_BASE/$USER_NAME/data
+    group=$(id -gn "$USER_NAME")
+    install -d -o "$USER_NAME" -g "$group" -m 755 "$dir" "$dir/Nanometrics"
+    note OK "Data folder ready: $dir/Nanometrics"
+}
 linux_settings() {
-    set_computer_name
     set_operator_account
+    make_data_folder
     set_autologin
     dns_backup
     timedatectl set-timezone UTC
@@ -701,10 +666,6 @@ install_tailscale() {
     if tailscale status --json >"$WORK/tailscale-status.json" &&
        jq -e '.BackendState=="Running"' "$WORK/tailscale-status.json" >/dev/null; then
         timeout --foreground -k 5 60 tailscale set --ssh=true
-        if [[ -n $RENAME_FROM && -n $COMPUTER_NAME ]]; then
-            timeout --foreground -k 5 60 tailscale set --hostname="$COMPUTER_NAME" ||
-                note WARN "Tailscale name was not changed to $COMPUTER_NAME; rename it in the Tailscale admin console"
-        fi
     else
         [[ -n $(get TAILSCALE_AUTH_KEY) ]] || fail 'TAILSCALE_AUTH_KEY required unless already enrolled'
         printf '%s' "$(get TAILSCALE_AUTH_KEY)" >"$WORK/tailscale.key"
@@ -748,6 +709,7 @@ install_release_and_config() {
         printf 'RCLONE_CONFIG=/etc/tele/rclone.conf\nSOURCE_PROFILES_DIR=/etc/tele/sources.d\n'
         printf 'PEGASUS_BIN=%s\nVNC_SERVICE=tele-vnc@%s.service\nVNC_PORT=5901\n' "$BIN" "$USER_NAME"
         [[ -z $LOCATION ]] || printf 'LOCATION=%s\n' "$LOCATION"
+        printf 'LOCAL_ARCHIVE=%s\n' "$HOME_BASE/$USER_NAME/data/Nanometrics"
         printf 'STARLINK_ADDRESS=%s\nSTARLINK_EXPECT_SNOW_OFF=%s\n' "$STARLINK_ADDRESS" \
             "$([[ $(get STARLINK_SNOW_MELT read) == off ]] && printf yes || printf no)"
         if [[ ! -f $WORK/sources.json && -n $(get RECORDER_DEVICE) ]]; then
@@ -838,73 +800,6 @@ install_services() {
     systemd-analyze verify "${files[@]}"
     # No --now: boot activation is a separate, last stage.
 }
-rename_station_data() {
-    # Moves what the earlier station name ($1) accumulated to the current one:
-    # local state (so nothing is uploaded twice) and the Dropbox folder (a
-    # server-side move). Safe to rerun: finished parts are simply skipped.
-    local old=$1 new=$STATION_NAME old_state old_remote listing count rc=0 ack tmp
-    old_state=${STATE_ROOT%/"$new"}/$old
-    old_remote=${REMOTE_BASE%/"$new"}/$old
-    say "Renaming station data: $old -> $new"
-    if [[ -d $old_state ]]; then
-        if find "$STATE_ROOT" -mindepth 1 ! -type d -print -quit | grep -q .; then
-            fail "Both $old_state and $STATE_ROOT hold data. Move one of them away and rerun."
-        fi
-        find "$STATE_ROOT" -depth -type d -empty -delete
-        mv -T -- "$old_state" "$STATE_ROOT"
-        # Acknowledgments name the Dropbox folder they were verified in.
-        while IFS= read -r -d '' ack; do
-            tmp=$(mktemp "$(dirname -- "$ack")/.rename.XXXXXX")
-            jq --arg o "$old" --arg n "$new" \
-                'if .destination then .destination |= (split("/tele/" + $o + "/") | join("/tele/" + $n + "/")) else . end' \
-                "$ack" >"$tmp"
-            mv -f -- "$tmp" "$ack"
-        done < <(find "$STATE_ROOT" -path '*/verified/*.json' -print0)
-        mkdir -p -- "$STATE_ROOT/pending" "$STATE_ROOT/verified" "$STATE_ROOT/owners" "$STATE_ROOT/kept"
-        if [[ -d /var/log/tele/$old && ! -e /var/log/tele/$new/.moved ]]; then
-            mkdir -p -- "/var/log/tele/$new"
-            cp -a -- "/var/log/tele/$old/." "/var/log/tele/$new/" && : >"/var/log/tele/$new/.moved"
-        fi
-        say "Local state moved from $old_state"
-        note OK "Local state of station $old moved to $new (nothing will be uploaded twice)"
-    else
-        say "No local state for station $old; nothing to move."
-    fi
-    listing=$(cloud lsf "$old_remote" -R --files-only) || rc=$?
-    case $rc in
-        0) ;;
-        3) listing='' ;;
-        *) fail "Cannot read the Dropbox folder $old_remote (rclone status $rc). Check the network and rerun." ;;
-    esac
-    # The remote config.txt names its station, so each station keeps its own.
-    listing=$(grep -vx 'config.txt' <<<"$listing" || true)
-    if [[ -n $listing ]]; then
-        count=$(grep -c . <<<"$listing")
-        say "Moving $count file(s) in Dropbox: $old_remote -> $REMOTE_BASE (this can take a while)"
-        watched 7200 'rename Dropbox folder' rclone move "$old_remote" "$REMOTE_BASE" \
-            --ignore-existing --exclude /config.txt --delete-empty-src-dirs \
-            --dropbox-batch-mode sync --contimeout 15s --timeout 120s \
-            --retries 3 --low-level-retries 5 --transfers 4 --checkers 4
-        note OK "Dropbox folder moved: $count file(s) from tele/$old to tele/$new"
-    else
-        say 'No data in the old Dropbox folder; nothing to move.'
-    fi
-    if [[ -n $RENAME_FROM_USER && $RENAME_FROM_USER != "$USER_NAME" ]] && id "$RENAME_FROM_USER" >/dev/null 2>&1; then
-        note TODO "The old account '$RENAME_FROM_USER' still exists. After the reboot, logged in as $USER_NAME, remove it: sudo deluser --remove-home $RENAME_FROM_USER"
-    fi
-    note TODO "The old Tailscale entry '$old' may remain; remove it in the Tailscale admin console if it shows offline"
-}
-rename_station() {
-    (
-        source /opt/tele/current/tele.sh
-        load_node_config /etc/tele/node.conf
-        load_local_config /etc/tele/config.txt
-        init_workspace
-        load_credentials /etc/tele/credentials.txt
-        check_dependencies
-        rename_station_data "$RENAME_FROM"
-    )
-}
 check_connections() {
     # Release lock only for the preflight entrypoint, then reacquire.
     flock -u 9
@@ -986,8 +881,7 @@ enable_field() {
     fi
 }
 schedule_reboot() {
-    # The new account, computer name and automatic login only apply after a
-    # restart. Never after a failure, and never when field mode was just
+    # Automatic login only applies after a restart. Never after a failure, and never when field mode was just
     # enabled (that boot would run a field cycle and power the computer off).
     [[ $(get REBOOT_AFTER yes) == yes && $ENABLE_FIELD != yes ]] || return 0
     # The desktop session of the person running the installer blocks a plain
@@ -998,7 +892,7 @@ schedule_reboot() {
         { note WARN 'Could not schedule the restart; restart by hand: sudo systemctl reboot -i'; return 0; }
     REBOOT_SCHEDULED=yes
     note OK 'Restart scheduled in one minute (cancel with: sudo systemctl stop tele-install-reboot.timer)'
-    say 'The computer restarts in one minute to apply the new account and automatic login.'
+    say 'The computer restarts in one minute to apply automatic login.'
     say 'To cancel: sudo systemctl stop tele-install-reboot.timer'
 }
 main() {
@@ -1024,11 +918,10 @@ main() {
         say '2. Install bootstrap tools, fetch one Git revision (or verify the bundle), validate private setup.'
         say '3. Update Ubuntu/snaps once; turn off automatic apt/snap updates for field boots.'
         say '3b. Install dependencies, pinned rclone/grpcurl and approved Harvester.'
-        say '4. Set computer name, operator account and password, automatic login, no lock screen, UTC/NTP, optional sleep masks and SSH.'
+        say '4. Check the computer name; set the account password, automatic login, no lock screen, UTC/NTP, optional sleep masks and SSH.'
         say '5. Install/enroll Tailscale with SSH enabled.'
         say '6. Back up private settings, deploy release, write configuration/profiles.'
         say '7. Install VNC and inactive systemd power-protection units.'
-        say '7b. Only with RENAME_FROM: move the earlier station'"'"'s local state and Dropbox folder to the new name.'
         say '8. Preflight recorder/Dropbox; preserve/create remote config; optional upload/email tests.'
         say '9. Read Starlink snow setting, or explicitly requested verified off attempt.'
         say "10. Field activation for next boot: $ENABLE_FIELD. No reboot/poweroff."
@@ -1060,7 +953,6 @@ main() {
     step 'Install and authorize Tailscale SSH' install_tailscale
     step 'Deploy TELE and private configuration' install_release_and_config
     step 'Install private VNC and power-protection services' install_services
-    if [[ -n $RENAME_FROM ]]; then step "Rename station $RENAME_FROM to $(get station)" rename_station; fi
     step 'Check recorder, Dropbox and email' check_connections
     step 'Check Starlink snow-melt configuration' check_starlink
     if [[ $ENABLE_FIELD == yes ]]; then step 'Enable field operation for next boot' enable_field; fi

@@ -37,7 +37,7 @@ node_key() {
             return 1 ;;
         DROPBOX_ROOT)
             value=$(normalize_dropbox_root "$value") || return 1 ;;
-        PEGASUS_BIN|RCLONE_CONFIG|RECORDER_DEVICE|SOURCE_PROFILES_DIR)
+        PEGASUS_BIN|RCLONE_CONFIG|RECORDER_DEVICE|SOURCE_PROFILES_DIR|LOCAL_ARCHIVE)
             [[ $value == /* && $value != *$'\t'* ]] || return 1 ;;
         STARLINK_ADDRESS)
             [[ $value =~ ^[A-Za-z0-9.-]+:[0-9]{1,5}$ ]] || return 1 ;;
@@ -76,6 +76,7 @@ load_node_config() {
     DROPBOX_ROOT='' VNC_SERVICE=tele-vnc@tele.service VNC_PORT=5901
     PEGASUS_BIN=/opt/PegasusHarvester/resources/app/node_modules/@nanometrics/pegasus-harvest-lib/build/Release/harvester
     RCLONE_CONFIG=/etc/tele/rclone.conf
+    LOCAL_ARCHIVE=/var/lib/tele/Nanometrics
     SOURCE_PROFILES_DIR=/etc/tele/sources.d
     STARLINK_ADDRESS=192.168.100.1:9200 STARLINK_EXPECT_SNOW_OFF=no
     read_kv "$file" node_key || { die "Invalid node configuration"; return 1; }
